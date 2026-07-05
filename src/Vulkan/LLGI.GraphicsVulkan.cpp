@@ -168,6 +168,11 @@ GraphicsVulkan::CreateRenderPass(Texture* texture, Texture* resolvedTexture, Tex
 
 Texture* GraphicsVulkan::CreateTexture(uint64_t id)
 {
+	if (!ValidateExternalTextureID(id, "GraphicsVulkan::CreateTexture(external)"))
+	{
+		return nullptr;
+	}
+
 	auto info = reinterpret_cast<VulkanImageInfo*>(id);
 	auto obj = new TextureVulkan();
 
@@ -182,6 +187,11 @@ Texture* GraphicsVulkan::CreateTexture(uint64_t id)
 
 Texture* GraphicsVulkan::CreateTexture(const TextureParameter& parameter)
 {
+	if (!ValidateTextureParameter(parameter, "GraphicsVulkan::CreateTexture", 2))
+	{
+		return nullptr;
+	}
+
 	auto obj = new TextureVulkan();
 	if (!obj->Initialize(this, this->GetDevice(), this->GetPysicalDevice(), this, parameter))
 	{
@@ -193,42 +203,31 @@ Texture* GraphicsVulkan::CreateTexture(const TextureParameter& parameter)
 
 Texture* GraphicsVulkan::CreateTexture(const TextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = parameter.MipMapCount;
-	param.IsMipmapGenerationEnabled = parameter.MipMapCount > 1;
-	param.SampleCount = 1;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsVulkan::CreateTexture(TextureInitializationParameter)", 2))
+	{
+		return nullptr;
+	}
 	return CreateTexture(param);
 }
 
 Texture* GraphicsVulkan::CreateRenderTexture(const RenderTextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
-	param.Usage = TextureUsageType::RenderTarget;
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsVulkan::CreateRenderTexture", 2))
+	{
+		return nullptr;
+	}
 	return CreateTexture(param);
 }
 
 Texture* GraphicsVulkan::CreateDepthTexture(const DepthTextureInitializationParameter& parameter)
 {
-	auto format = TextureFormatType::D32;
-	if (parameter.Mode == DepthTextureMode::DepthStencil)
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsVulkan::CreateDepthTexture", 2))
 	{
-		format = TextureFormatType::D24S8;
+		return nullptr;
 	}
-
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
 	return CreateTexture(param);
 }
 

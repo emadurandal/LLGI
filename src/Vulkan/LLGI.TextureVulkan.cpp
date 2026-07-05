@@ -160,6 +160,7 @@ bool TextureVulkan::Initialize(GraphicsVulkan* graphics,
 		vk::Buffer buffer = device.createBuffer(bufferInfo);
 
 		vk::MemoryRequirements memReqs = device.getBufferMemoryRequirements(buffer);
+		cpuBufMemorySize_ = memReqs.size;
 		vk::MemoryAllocateInfo memAlloc;
 		memAlloc.allocationSize = memReqs.size;
 		memAlloc.memoryTypeIndex = GetMemoryTypeIndex(physicalDevice, memReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible);
@@ -310,7 +311,7 @@ void* TextureVulkan::Lock()
 	if (graphics_ == nullptr)
 		return nullptr;
 
-	data_ = graphics_->GetDevice().mapMemory(cpuBuf->devMem(), 0, memorySize, vk::MemoryMapFlags());
+	data_ = graphics_->GetDevice().mapMemory(cpuBuf->devMem(), 0, cpuBufMemorySize_, vk::MemoryMapFlags());
 	return data_;
 }
 
@@ -321,7 +322,20 @@ void TextureVulkan::Unlock()
 		return;
 	}
 
+	vk::MappedMemoryRange mappedRange;
+	mappedRange.memory = cpuBuf->devMem();
+	mappedRange.offset = 0;
+	mappedRange.size = VK_WHOLE_SIZE;
+	const auto flushResult = graphics_->GetDevice().flushMappedMemoryRanges(1, &mappedRange);
+	if (flushResult != vk::Result::eSuccess)
+	{
+		LLGI::Log(LogType::Error, "Failed to flush texture upload memory");
+		graphics_->GetDevice().unmapMemory(cpuBuf->devMem());
+		data_ = nullptr;
+		return;
+	}
 	graphics_->GetDevice().unmapMemory(cpuBuf->devMem());
+	data_ = nullptr;
 
 	// copy buffer
 	vk::CommandBufferAllocateInfo cmdBufInfo;

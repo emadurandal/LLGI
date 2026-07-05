@@ -492,6 +492,46 @@ void Log(LogType logType, const std::string& message);
 
 inline size_t GetAlignedSize(size_t size, size_t alignment) { return (size + (alignment - 1)) & ~(alignment - 1); }
 
+inline std::string to_string(const Vec2I& value)
+{
+	return std::string("(") + std::to_string(value.X) + ", " + std::to_string(value.Y) + ")";
+}
+
+inline std::string to_string(const Vec3I& value)
+{
+	return std::string("(") + std::to_string(value.X) + ", " + std::to_string(value.Y) + ", " + std::to_string(value.Z) + ")";
+}
+
+inline std::string to_string(TopologyType topology)
+{
+	switch (topology)
+	{
+	case TopologyType::Triangle:
+		return "Triangle";
+	case TopologyType::Line:
+		return "Line";
+	case TopologyType::Point:
+		return "Point";
+	default:
+		return "Unregistered";
+	}
+}
+
+inline int32_t GetIndexCountPerPrimitive(TopologyType topology)
+{
+	switch (topology)
+	{
+	case TopologyType::Triangle:
+		return 3;
+	case TopologyType::Line:
+		return 2;
+	case TopologyType::Point:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 inline std::string to_string(TextureFormatType format)
 {
 	switch (format)
@@ -542,6 +582,78 @@ inline std::string to_string(TextureFormatType format)
 		return "D24S8";
 	case TextureFormatType::RG11B10_UFLOAT:
 		return "RG11B10_UFLOAT";
+	default:
+		return "Unregistered";
+	}
+}
+
+inline std::string to_string(TextureUsageType usage)
+{
+	if (usage == TextureUsageType::NoneFlag)
+	{
+		return "None";
+	}
+
+	std::string ret;
+	auto append = [&ret](const char* value)
+	{
+		if (!ret.empty())
+		{
+			ret += "|";
+		}
+		ret += value;
+	};
+
+	auto contains = [usage](TextureUsageType value) -> bool
+	{
+		return (static_cast<uint32_t>(usage) & static_cast<uint32_t>(value)) == static_cast<uint32_t>(value);
+	};
+
+	if (contains(TextureUsageType::RenderTarget))
+	{
+		append("RenderTarget");
+	}
+	if (contains(TextureUsageType::Array))
+	{
+		append("Array");
+	}
+	if (contains(TextureUsageType::Storage))
+	{
+		append("Storage");
+	}
+	if (contains(TextureUsageType::External))
+	{
+		append("External");
+	}
+
+	const auto knownFlags = static_cast<uint32_t>(TextureUsageType::RenderTarget) | static_cast<uint32_t>(TextureUsageType::Array) |
+							static_cast<uint32_t>(TextureUsageType::Storage) | static_cast<uint32_t>(TextureUsageType::External);
+	const auto unknownFlags = static_cast<uint32_t>(usage) & ~knownFlags;
+	if (unknownFlags != 0)
+	{
+		const auto unknown = std::string("Unknown(") + std::to_string(unknownFlags) + ")";
+		append(unknown.c_str());
+	}
+
+	return ret.empty() ? std::string("None") : ret;
+}
+
+inline std::string to_string(TextureType type)
+{
+	switch (type)
+	{
+	case TextureType::Screen:
+		return "Screen";
+	case TextureType::Color:
+		return "Color";
+	case TextureType::Depth:
+		return "Depth";
+	case TextureType::Render:
+		return "Render";
+	case TextureType::Cube:
+		return "Cube";
+	case TextureType::Unknown:
+		return "Unknown";
 	default:
 		return "Unregistered";
 	}

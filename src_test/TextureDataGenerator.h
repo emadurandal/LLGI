@@ -9,6 +9,11 @@ class TextureDataGenerator
 {
 public:
 	static std::vector<uint8_t> CreateDummyTextureData(LLGI::Vec2I size, LLGI::TextureFormatType format, int32_t mipLevelCount = 1);
+	static std::vector<uint8_t> CreateDummyTextureData(
+		LLGI::Vec3I size,
+		LLGI::TextureFormatType format,
+		int32_t mipLevelCount = 1,
+		bool preserveDepth = false);
 
 	static void WriteDummyTexture(LLGI::Texture* texture);
 

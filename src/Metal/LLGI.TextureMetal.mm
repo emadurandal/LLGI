@@ -112,6 +112,13 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 	}
 
 	texture_ = [device newTextureWithDescriptor:textureDescriptor];
+	if (texture_ == nullptr)
+	{
+		Log(LogType::Error,
+			std::string("TextureMetal::Initialize failed: newTextureWithDescriptor returned null. parameter=") +
+				DescribeTextureParameter(parameter));
+		return false;
+	}
 
 	size_ = parameter.Size;
 

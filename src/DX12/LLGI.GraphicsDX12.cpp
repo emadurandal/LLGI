@@ -152,6 +152,11 @@ RenderPass* GraphicsDX12::CreateRenderPass(Texture* texture, Texture* resolvedTe
 
 Texture* GraphicsDX12::CreateTexture(const TextureParameter& parameter)
 {
+	if (!ValidateTextureParameter(parameter, "GraphicsDX12::CreateTexture", 2))
+	{
+		return nullptr;
+	}
+
 	auto obj = new TextureDX12(this, true);
 	if (!obj->Initialize(parameter))
 	{
@@ -163,6 +168,11 @@ Texture* GraphicsDX12::CreateTexture(const TextureParameter& parameter)
 
 Texture* GraphicsDX12::CreateTexture(uint64_t id)
 {
+	if (!ValidateExternalTextureID(id, "GraphicsDX12::CreateTexture(external)"))
+	{
+		return nullptr;
+	}
+
 	auto obj = new TextureDX12(this, true);
 	if (!obj->Initialize(reinterpret_cast<ID3D12Resource*>(id)))
 	{
@@ -174,13 +184,12 @@ Texture* GraphicsDX12::CreateTexture(uint64_t id)
 
 Texture* GraphicsDX12::CreateTexture(const TextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = parameter.MipMapCount;
-	param.IsMipmapGenerationEnabled = parameter.MipMapCount > 1;
-	param.SampleCount = 1;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
+	auto param = ToTextureParameter(parameter);
+
+	if (!ValidateTextureParameter(param, "GraphicsDX12::CreateTexture(TextureInitializationParameter)", 2))
+	{
+		return nullptr;
+	}
 
 	auto obj = new TextureDX12(this, true);
 	if (!obj->Initialize(param))
@@ -193,13 +202,12 @@ Texture* GraphicsDX12::CreateTexture(const TextureInitializationParameter& param
 
 Texture* GraphicsDX12::CreateRenderTexture(const RenderTextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
-	param.Usage = TextureUsageType::RenderTarget;
+	auto param = ToTextureParameter(parameter);
+
+	if (!ValidateTextureParameter(param, "GraphicsDX12::CreateRenderTexture", 2))
+	{
+		return nullptr;
+	}
 
 	auto obj = new TextureDX12(this, true);
 	if (!obj->Initialize(param))
@@ -212,18 +220,12 @@ Texture* GraphicsDX12::CreateRenderTexture(const RenderTextureInitializationPara
 
 Texture* GraphicsDX12::CreateDepthTexture(const DepthTextureInitializationParameter& parameter)
 {
-	auto format = TextureFormatType::D32;
-	if (parameter.Mode == DepthTextureMode::DepthStencil)
-	{
-		format = TextureFormatType::D24S8;
-	}
+	auto param = ToTextureParameter(parameter);
 
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
+	if (!ValidateTextureParameter(param, "GraphicsDX12::CreateDepthTexture", 2))
+	{
+		return nullptr;
+	}
 
 	auto obj = new TextureDX12(this, true);
 	if (!obj->Initialize(param))

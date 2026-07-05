@@ -267,3 +267,35 @@ void test_mipmap(LLGI::DeviceType deviceType)
 }
 TestRegister SimpleRender_Tex_MipMap_RGBA8("SimpleRender.Texture_MipMap_RGBA8",
 										   [](LLGI::DeviceType device) -> void { test_mipmap(device); });
+
+void test_mipmap_array_generation_unsupported(LLGI::DeviceType deviceType)
+{
+	LLGI::PlatformParameter pp;
+	pp.Device = deviceType;
+	pp.WaitVSync = false;
+
+	auto window = std::unique_ptr<LLGI::Window>(LLGI::CreateWindow("TextureArrayMipmap", LLGI::Vec2I(64, 64)));
+	VERIFY(window != nullptr);
+
+	auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, window.get()));
+	VERIFY(platform != nullptr);
+
+	auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
+	VERIFY(graphics != nullptr);
+
+	LLGI::TextureParameter texParam;
+	texParam.Dimension = 2;
+	texParam.Format = LLGI::TextureFormatType::R8G8B8A8_UNORM;
+	texParam.MipLevelCount = 4;
+	texParam.SampleCount = 1;
+	texParam.Size = {64, 64, 2};
+	texParam.Usage = LLGI::TextureUsageType::Array;
+	texParam.IsMipmapGenerationEnabled = true;
+
+	auto texture = graphics->CreateTexture(texParam);
+	VERIFY(texture == nullptr);
+}
+
+TestRegister SimpleRender_Tex_ArrayMipMapGenerationUnsupported(
+	"SimpleRender.Texture_ArrayMipMapGenerationUnsupported",
+	[](LLGI::DeviceType device) -> void { test_mipmap_array_generation_unsupported(device); });

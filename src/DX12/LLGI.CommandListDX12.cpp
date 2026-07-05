@@ -21,6 +21,7 @@ bool CanGenerateMipMap(const TextureDX12* texture)
 		   texture->GetMipmapCount() > 1 &&
 		   texture->GetParameter().Dimension == 2 &&
 		   texture->GetParameter().SampleCount == 1 &&
+		   !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Array) &&
 		   !IsBlockCompressedFormat(texture->GetParameter().Format);
 }
 
@@ -683,7 +684,11 @@ void CommandListDX12::EndRenderPass()
 
 void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 {
-	assert(currentCommandList_ != nullptr);
+	if (currentCommandList_ == nullptr)
+	{
+		Log(LogType::Error, "CommandListDX12::Draw skipped: command list is null.");
+		return;
+	}
 
 	BindingVertexBuffer vb_;
 	BindingIndexBuffer ib_;
@@ -693,13 +698,10 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 	bool isIBDirtied = false;
 	bool isPipDirtied = false;
 
-	GetCurrentVertexBuffer(vb_, isVBDirtied);
-	GetCurrentIndexBuffer(ib_, isIBDirtied);
-	GetCurrentPipelineState(pip_, isPipDirtied);
-
-	assert(vb_.vertexBuffer != nullptr);
-	assert(ib_.indexBuffer != nullptr);
-	assert(pip_ != nullptr);
+	if (!ValidateDrawState("CommandListDX12", primitiveCount, instanceCount, vb_, ib_, pip_, isVBDirtied, isIBDirtied, isPipDirtied))
+	{
+		return;
+	}
 
 	auto vb = static_cast<BufferDX12*>(vb_.vertexBuffer);
 	auto ib = static_cast<BufferDX12*>(ib_.indexBuffer);
@@ -722,7 +724,6 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 		indexView.BufferLocation = ib->Get()->GetGPUVirtualAddress() + ib_.offset;
 		indexView.SizeInBytes = ib->GetActualSize() - ib_.offset;
 
-		assert(ib_.stride == 2 || ib_.stride == 4);
 		indexView.Format = ib_.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 		currentCommandList_->IASetIndexBuffer(&indexView);
 	}
@@ -877,27 +878,26 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 	// setup a topology (triangle)
 
-	int indexPerPrim = 0;
+	const auto indexPerPrim = GetIndexCountPerPrimitive(pip_->Topology);
+	if (indexPerPrim == 0)
+	{
+		Log(LogType::Error, "CommandListDX12::Draw skipped: unsupported topology. topology=" + to_string(pip_->Topology));
+		return;
+	}
+
 	D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
 	if (pip_->Topology == TopologyType::Triangle)
 	{
-		indexPerPrim = 3;
 		topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	}
 	else if (pip_->Topology == TopologyType::Line)
 	{
-		indexPerPrim = 2;
 		topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
 	}
 	else if (pip_->Topology == TopologyType::Point)
 	{
-		indexPerPrim = 1;
 		topology = D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
-	}
-	else
-	{
-		assert(0);
 	}
 
 	currentCommandList_->IASetPrimitiveTopology(topology);
@@ -1119,14 +1119,19 @@ void CommandListDX12::EndComputePass() {}
 
 void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32_t threadX, int32_t threadY, int32_t threadZ)
 {
-	assert(currentCommandList_ != nullptr);
+	if (currentCommandList_ == nullptr)
+	{
+		Log(LogType::Error, "CommandListDX12::Dispatch skipped: command list is null.");
+		return;
+	}
 	PipelineState* pip_ = nullptr;
 
 	bool isPipDirtied = false;
 
-	GetCurrentPipelineState(pip_, isPipDirtied);
-
-	assert(pip_ != nullptr);
+	if (!ValidateDispatchState("CommandListDX12", groupX, groupY, groupZ, threadX, threadY, threadZ, pip_, isPipDirtied))
+	{
+		return;
+	}
 
 	auto pip = static_cast<PipelineStateDX12*>(pip_);
 

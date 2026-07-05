@@ -198,6 +198,49 @@ TestRegister SimpleRender_Tex_BC7_SRGB_MipMap_RawData(
 		RunTextureFormatRawDataScreenRenderTest(device, {"Texture_BC7_SRGB_MipMap_RawData", LLGI::TextureFormatType::BC7_SRGB, 4});
 	});
 
+TestRegister SimpleRender_Tex_CompressedArrayMipMap_RawData(
+	"SimpleRender.Texture_CompressedArrayMipMap_RawData",
+	[](LLGI::DeviceType device) -> void {
+		const TextureFormatRenderTestCase testCases[] = {
+			{"Texture_BC1_ArrayMipMap_RawData", LLGI::TextureFormatType::BC1, 4, true, 3},
+			{"Texture_BC2_ArrayMipMap_RawData", LLGI::TextureFormatType::BC2, 4, true, 3},
+			{"Texture_BC3_ArrayMipMap_RawData", LLGI::TextureFormatType::BC3, 4, true, 3},
+			{"Texture_BC7_ArrayMipMap_RawData", LLGI::TextureFormatType::BC7, 4, true, 3},
+			{"Texture_BC1_SRGB_ArrayMipMap_RawData", LLGI::TextureFormatType::BC1_SRGB, 4, true, 3},
+			{"Texture_BC2_SRGB_ArrayMipMap_RawData", LLGI::TextureFormatType::BC2_SRGB, 4, true, 3},
+			{"Texture_BC3_SRGB_ArrayMipMap_RawData", LLGI::TextureFormatType::BC3_SRGB, 4, true, 3},
+			{"Texture_BC7_SRGB_ArrayMipMap_RawData", LLGI::TextureFormatType::BC7_SRGB, 4, true, 3},
+		};
+
+		if (!IsTextureFormatRenderTestSupported(device, LLGI::TextureFormatType::BC1))
+		{
+			return;
+		}
+
+		LLGI::PlatformParameter pp;
+		pp.Device = device;
+		pp.WaitVSync = false;
+
+		auto window = std::unique_ptr<LLGI::Window>(LLGI::CreateWindow("TextureCompressedArrayMipMap", LLGI::Vec2I(64, 64)));
+		VERIFY(window != nullptr);
+
+		auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, window.get()));
+		VERIFY(platform != nullptr);
+
+		auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
+		VERIFY(graphics != nullptr);
+
+		for (const auto& testCase : testCases)
+		{
+			auto texture = LLGI::CreateSharedPtr(CreateRawDataTexture(graphics.get(), testCase));
+			VERIFY(texture != nullptr);
+			VERIFY(texture->GetUsage() == LLGI::TextureUsageType::Array);
+			VERIFY(texture->GetFormat() == testCase.Format);
+		}
+
+		graphics->WaitFinish();
+	});
+
 TestRegister SimpleRender_Tex_Null("SimpleRender.Texture_Null", [](LLGI::DeviceType device) -> void {
 	test_simple_texture_rectangle(device, SimpleTextureRectangleTestMode::Null);
 });

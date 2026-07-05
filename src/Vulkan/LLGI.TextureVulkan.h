@@ -27,6 +27,7 @@ private:
 	TextureParameter parameter_;
 
 	int32_t memorySize = 0;
+	vk::DeviceSize cpuBufMemorySize_ = 0;
 	std::unique_ptr<InternalBuffer> cpuBuf;
 	void* data_ = nullptr;
 

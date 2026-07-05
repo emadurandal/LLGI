@@ -84,19 +84,26 @@ bool IsTextureFormatRenderTestSupported(LLGI::DeviceType deviceType, LLGI::Textu
 LLGI::Texture* CreateRawDataTexture(LLGI::Graphics* graphics, const TextureFormatRenderTestCase& testCase)
 {
 	const auto textureSize = testCase.MipLevelCount > 1 ? 16 : 64;
+	const auto arrayCount = testCase.IsArray ? testCase.ArrayCount : 1;
 
 	LLGI::TextureParameter texParam;
 	texParam.Dimension = 2;
 	texParam.Format = testCase.Format;
 	texParam.MipLevelCount = testCase.MipLevelCount;
 	texParam.SampleCount = 1;
-	texParam.Size = {textureSize, textureSize, 1};
+	texParam.Size = {textureSize, textureSize, arrayCount};
+	texParam.Usage = testCase.IsArray ? LLGI::TextureUsageType::Array : LLGI::TextureUsageType::NoneFlag;
 	texParam.IsMipmapGenerationEnabled = false;
 
 	auto texture = graphics->CreateTexture(texParam);
 	VERIFY(texture != nullptr);
+	VERIFY(texture->GetMipmapCount() == testCase.MipLevelCount);
 
-	const auto textureData = TextureDataGenerator::CreateDummyTextureData({textureSize, textureSize}, testCase.Format, testCase.MipLevelCount);
+	const auto textureData =
+		TextureDataGenerator::CreateDummyTextureData(texParam.Size, testCase.Format, testCase.MipLevelCount, testCase.IsArray);
+	const auto expectedSize =
+		static_cast<size_t>(LLGI::GetTextureMemorySize(testCase.Format, texParam.Size, testCase.MipLevelCount, testCase.IsArray));
+	VERIFY(textureData.size() == expectedSize);
 	auto data = texture->Lock();
 	VERIFY(data != nullptr);
 	memcpy(data, textureData.data(), textureData.size());

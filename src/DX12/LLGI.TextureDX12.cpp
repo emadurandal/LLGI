@@ -3,6 +3,28 @@
 
 namespace LLGI
 {
+namespace
+{
+
+size_t GetSubresourceSourceOffset(TextureFormatType format, const Vec3I& textureSize, int32_t mipLevel, int32_t arrayLayer, bool isArray)
+{
+	size_t offset = 0;
+	for (int32_t i = 0; i < mipLevel; i++)
+	{
+		offset += static_cast<size_t>(GetTextureMemorySize(format, GetTextureMipSize(textureSize, i, isArray)));
+	}
+
+	if (isArray)
+	{
+		auto mipSize = GetTextureMipSize(textureSize, mipLevel, true);
+		mipSize.Z = 1;
+		offset += static_cast<size_t>(GetTextureMemorySize(format, mipSize)) * arrayLayer;
+	}
+
+	return offset;
+}
+
+} // namespace
 
 TextureDX12::TextureDX12(GraphicsDX12* graphics, bool hasStrongRef) : graphics_(graphics), hasStrongRef_(hasStrongRef)
 {
@@ -228,11 +250,12 @@ void TextureDX12::Unlock()
 
 	if (ptr != nullptr)
 	{
-		size_t srcOffset = 0;
 		const bool isArray = (parameter_.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+		const int32_t mipLevelCount = parameter_.MipLevelCount > 0 ? parameter_.MipLevelCount : 1;
 		for (UINT subresource = 0; subresource < static_cast<UINT>(footprints_.size()); subresource++)
 		{
-			const int32_t mipLevel = parameter_.MipLevelCount > 0 ? static_cast<int32_t>(subresource % parameter_.MipLevelCount) : 0;
+			const int32_t mipLevel = static_cast<int32_t>(subresource % mipLevelCount);
+			const int32_t arrayLayer = isArray ? static_cast<int32_t>(subresource / mipLevelCount) : 0;
 			auto mipSize = GetTextureMipSize(texture_size_, mipLevel, isArray);
 			if (isArray)
 			{
@@ -243,6 +266,7 @@ void TextureDX12::Unlock()
 			const int32_t rowPitch = GetTextureRowPitch(format_, mipSize);
 			const auto& footprint = footprints_.at(subresource);
 			const size_t subresourceSize = static_cast<size_t>(rowPitch) * rowCount;
+			const size_t srcOffset = GetSubresourceSourceOffset(format_, texture_size_, mipLevel, arrayLayer, isArray);
 
 			if (srcOffset + subresourceSize > locked_buffer_.size())
 			{
@@ -255,8 +279,6 @@ void TextureDX12::Unlock()
 			{
 				memcpy(dst + static_cast<size_t>(row) * footprint.Footprint.RowPitch, src + static_cast<size_t>(row) * rowPitch, rowPitch);
 			}
-
-			srcOffset += subresourceSize;
 		}
 	}
 	buffer_for_upload_->Unmap(0, nullptr);

@@ -490,13 +490,10 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 	bool isIBDirtied = false;
 	bool isPipDirtied = false;
 
-	GetCurrentVertexBuffer(vb_, isVBDirtied);
-	GetCurrentIndexBuffer(ib_, isIBDirtied);
-	GetCurrentPipelineState(pip_, isPipDirtied);
-
-	assert(vb_.vertexBuffer != nullptr);
-	assert(ib_.indexBuffer != nullptr);
-	assert(pip_ != nullptr);
+	if (!ValidateDrawState("CommandListVulkan", primitiveCount, instanceCount, vb_, ib_, pip_, isVBDirtied, isIBDirtied, isPipDirtied))
+	{
+		return;
+	}
 
 	auto vb = static_cast<BufferVulkan*>(vb_.vertexBuffer);
 	auto ib = static_cast<BufferVulkan*>(ib_.indexBuffer);
@@ -522,7 +519,6 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 		vk::DeviceSize indexOffset = ib_.offset;
 		vk::IndexType indexType = vk::IndexType::eUint16;
 
-		assert(ib_.stride == 2 || ib_.stride == 4);
 		if (ib_.stride == 2)
 		{
 			indexType = vk::IndexType::eUint16;
@@ -583,22 +579,11 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 	}
 
 	// draw
-	int indexPerPrim = 0;
-	if (pip->Topology == TopologyType::Triangle)
+	const auto indexPerPrim = GetIndexCountPerPrimitive(pip->Topology);
+	if (indexPerPrim == 0)
 	{
-		indexPerPrim = 3;
-	}
-	else if (pip->Topology == TopologyType::Line)
-	{
-		indexPerPrim = 2;
-	}
-	else if (pip->Topology == TopologyType::Point)
-	{
-		indexPerPrim = 1;
-	}
-	else
-	{
-		assert(0);
+		Log(LogType::Error, "CommandListVulkan::Draw skipped: unsupported topology. topology=" + to_string(pip->Topology));
+		return;
 	}
 
 	currentCommandBuffer_.drawIndexed(indexPerPrim * primitiveCount, instanceCount, 0, 0, 0);
@@ -669,6 +654,11 @@ void CommandListVulkan::GenerateMipMap(Texture* src)
 	{
 		return;
 	}
+	if (BitwiseContains(parameter.Usage, TextureUsageType::Array))
+	{
+		Log(LogType::Error, "CommandListVulkan::GenerateMipMap skipped: mipmap generation for texture arrays is currently not supported by LLGI.");
+		return;
+	}
 
 	int32_t mipWidth = src->GetSizeAs2D().X;
 	int32_t mipHeight = src->GetSizeAs2D().Y;
@@ -723,7 +713,7 @@ void CommandListVulkan::CopyBuffer(Buffer* src, Buffer* dst)
 	srcBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferRead);
 	dstBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferWrite);
 	currentCommandBuffer_.copyBuffer(srcGpuBuf, dstGpuBuf, copyRegion);
-	dstBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferRead);
+	dstBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::ShaderRead);
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
@@ -906,9 +896,10 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 	bool isPipDirtied = false;
 
-	GetCurrentPipelineState(pip_, isPipDirtied);
-
-	assert(pip_ != nullptr);
+	if (!ValidateDispatchState("CommandListVulkan", groupX, groupY, groupZ, threadX, threadY, threadZ, pip_, isPipDirtied))
+	{
+		return;
+	}
 
 	auto pip = static_cast<PipelineStateVulkan*>(pip_);
 

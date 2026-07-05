@@ -1,6 +1,11 @@
 #version 430
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
+struct SPIRV_Cross_Input
+{
+    uvec3 _RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID;
+};
+
 struct SlotData
 {
     vec3 Position;
@@ -9,8 +14,10 @@ struct SlotData
 
 layout(set = 2, binding = 1, std430) buffer Data
 {
-    SlotData _data[];
+    uint _data[];
 } Data_1;
+
+uvec3 _RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID;
 
 void _main(uvec3 dtid)
 {
@@ -18,14 +25,33 @@ void _main(uvec3 dtid)
     SlotData data;
     data.Position = vec3((float(index) * 2.0) + 0.25, (float(index) * (-3.0)) + 0.5, (float(index) * 4.0) - 0.75);
     data.Direction = 305397760u + (index * 31u);
-    Data_1._data[index].Position = data.Position;
-    Data_1._data[index].Direction = data.Direction;
+    int byteAddrTemp = int(((index * 16u) + 0u) >> uint(2));
+    Data_1._data[byteAddrTemp] = floatBitsToUint(data.Position).x;
+    Data_1._data[byteAddrTemp + 1] = floatBitsToUint(data.Position).y;
+    Data_1._data[byteAddrTemp + 2] = floatBitsToUint(data.Position).z;
+    int byteAddrTemp_1 = int(((index * 16u) + 12u) >> uint(2));
+    Data_1._data[byteAddrTemp_1] = data.Direction;
+}
+
+void comp_main()
+{
+    uvec3 dtid = _RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID;
+    uvec3 param = dtid;
+    uvec3 param_1 = param;
+    _main(param_1);
+}
+
+void _main(SPIRV_Cross_Input stage_input)
+{
+    _RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID = stage_input._RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID;
+    comp_main();
 }
 
 void main()
 {
-    uvec3 dtid = gl_GlobalInvocationID;
-    uvec3 param = dtid;
+    SPIRV_Cross_Input stage_input;
+    stage_input._RESERVED_IDENTIFIER_FIXUP_gl_GlobalInvocationID = gl_GlobalInvocationID;
+    SPIRV_Cross_Input param = stage_input;
     _main(param);
 }
 

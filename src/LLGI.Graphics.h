@@ -48,6 +48,14 @@ struct DepthTextureInitializationParameter
 	DepthTextureMode Mode = DepthTextureMode::Depth;
 };
 
+std::string DescribeTextureParameter(const TextureParameter& parameter);
+TextureFormatType GetDepthTextureFormat(DepthTextureMode mode);
+TextureParameter ToTextureParameter(const TextureInitializationParameter& parameter);
+TextureParameter ToTextureParameter(const RenderTextureInitializationParameter& parameter);
+TextureParameter ToTextureParameter(const DepthTextureInitializationParameter& parameter);
+bool ValidateTextureParameter(const TextureParameter& parameter, const char* caller, int32_t minimumDimension = 1);
+bool ValidateExternalTextureID(uint64_t id, const char* caller);
+
 /**
 	@brief	provide a memory which is available in one frame
 */
@@ -196,7 +204,7 @@ public:
 
 	virtual Vec2I GetScreenSize() const { return screenSize_; }
 
-	RenderPassPipelineStateKey GetKey() const;
+	virtual RenderPassPipelineStateKey GetKey() const;
 };
 
 /**
@@ -292,7 +300,7 @@ public:
 		This is a function to create an object.
 		But it is very fast. So it can call it in everyframe.
 	*/
-	virtual RenderPassPipelineState* CreateRenderPassPipelineState(const RenderPassPipelineStateKey& key) { return nullptr; }
+	virtual RenderPassPipelineState* CreateRenderPassPipelineState(const RenderPassPipelineStateKey& key);
 
 	/** For testing. Wait for all commands in queue to complete. Then read data from specified render target. */
 	virtual std::vector<uint8_t> CaptureRenderTarget(Texture* renderTarget);

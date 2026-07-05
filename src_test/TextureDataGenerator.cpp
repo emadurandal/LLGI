@@ -176,75 +176,78 @@ void FillTextureData(uint8_t* dst, LLGI::Vec3I size, LLGI::TextureFormatType for
 {
 	const auto color = GetMipColor(mipLevel);
 
-	for (int32_t y = 0; y < size.Y; y++)
+	for (int32_t z = 0; z < size.Z; z++)
 	{
-		for (int32_t x = 0; x < size.X; x++)
+		for (int32_t y = 0; y < size.Y; y++)
 		{
-			const auto checker = static_cast<uint8_t>((x % 16 > 8 || y % 16 > 8) ? 128 : 0);
-			const auto r = static_cast<uint8_t>((static_cast<int32_t>(color.R) + x) % 256);
-			const auto g = static_cast<uint8_t>((static_cast<int32_t>(color.G) + y) % 256);
-			const auto b = static_cast<uint8_t>(color.B ^ checker);
-			const auto pixelIndex = static_cast<size_t>(x + y * size.X);
+			for (int32_t x = 0; x < size.X; x++)
+			{
+				const auto checker = static_cast<uint8_t>((x % 16 > 8 || y % 16 > 8) ? 128 : 0);
+				const auto r = static_cast<uint8_t>((static_cast<int32_t>(color.R) + x + z * 19) % 256);
+				const auto g = static_cast<uint8_t>((static_cast<int32_t>(color.G) + y + z * 23) % 256);
+				const auto b = static_cast<uint8_t>((color.B + z * 31) ^ checker);
+				const auto pixelIndex = static_cast<size_t>(x + (y + z * size.Y) * size.X);
 
-			if (format == LLGI::TextureFormatType::R8G8B8A8_UNORM || format == LLGI::TextureFormatType::R8G8B8A8_UNORM_SRGB)
-			{
-				auto pixel = dst + pixelIndex * 4;
-				pixel[0] = r;
-				pixel[1] = g;
-				pixel[2] = b;
-				pixel[3] = 255;
-			}
-			else if (format == LLGI::TextureFormatType::B8G8R8A8_UNORM || format == LLGI::TextureFormatType::B8G8R8A8_UNORM_SRGB)
-			{
-				auto pixel = dst + pixelIndex * 4;
-				pixel[0] = b;
-				pixel[1] = g;
-				pixel[2] = r;
-				pixel[3] = 255;
-			}
-			else if (format == LLGI::TextureFormatType::R8_UNORM)
-			{
-				dst[pixelIndex] = r;
-			}
-			else if (format == LLGI::TextureFormatType::RG11B10_UFLOAT)
-			{
-				WriteUint32(dst + pixelIndex * 4, PackRG11B10UFloat(r, g, b));
-			}
-			else if (format == LLGI::TextureFormatType::R16_FLOAT)
-			{
-				WriteUint16(dst + pixelIndex * 2, GetHalfValue(r));
-			}
-			else if (format == LLGI::TextureFormatType::R32_FLOAT)
-			{
-				WriteFloat(dst + pixelIndex * 4, r / 255.0f);
-			}
-			else if (format == LLGI::TextureFormatType::R16G16_FLOAT)
-			{
-				auto pixel = dst + pixelIndex * 4;
-				WriteUint16(pixel, GetHalfValue(r));
-				WriteUint16(pixel + 2, GetHalfValue(g));
-			}
-			else if (format == LLGI::TextureFormatType::R32G32_FLOAT)
-			{
-				auto pixel = dst + pixelIndex * 8;
-				WriteFloat(pixel, r / 255.0f);
-				WriteFloat(pixel + 4, g / 255.0f);
-			}
-			else if (format == LLGI::TextureFormatType::R16G16B16A16_FLOAT)
-			{
-				auto pixel = dst + pixelIndex * 8;
-				WriteUint16(pixel, GetHalfValue(r));
-				WriteUint16(pixel + 2, GetHalfValue(g));
-				WriteUint16(pixel + 4, GetHalfValue(b));
-				WriteUint16(pixel + 6, GetHalfValue(255));
-			}
-			else if (format == LLGI::TextureFormatType::R32G32B32A32_FLOAT)
-			{
-				auto pixel = dst + pixelIndex * 16;
-				WriteFloat(pixel, r / 255.0f);
-				WriteFloat(pixel + 4, g / 255.0f);
-				WriteFloat(pixel + 8, b / 255.0f);
-				WriteFloat(pixel + 12, 1.0f);
+				if (format == LLGI::TextureFormatType::R8G8B8A8_UNORM || format == LLGI::TextureFormatType::R8G8B8A8_UNORM_SRGB)
+				{
+					auto pixel = dst + pixelIndex * 4;
+					pixel[0] = r;
+					pixel[1] = g;
+					pixel[2] = b;
+					pixel[3] = 255;
+				}
+				else if (format == LLGI::TextureFormatType::B8G8R8A8_UNORM || format == LLGI::TextureFormatType::B8G8R8A8_UNORM_SRGB)
+				{
+					auto pixel = dst + pixelIndex * 4;
+					pixel[0] = b;
+					pixel[1] = g;
+					pixel[2] = r;
+					pixel[3] = 255;
+				}
+				else if (format == LLGI::TextureFormatType::R8_UNORM)
+				{
+					dst[pixelIndex] = r;
+				}
+				else if (format == LLGI::TextureFormatType::RG11B10_UFLOAT)
+				{
+					WriteUint32(dst + pixelIndex * 4, PackRG11B10UFloat(r, g, b));
+				}
+				else if (format == LLGI::TextureFormatType::R16_FLOAT)
+				{
+					WriteUint16(dst + pixelIndex * 2, GetHalfValue(r));
+				}
+				else if (format == LLGI::TextureFormatType::R32_FLOAT)
+				{
+					WriteFloat(dst + pixelIndex * 4, r / 255.0f);
+				}
+				else if (format == LLGI::TextureFormatType::R16G16_FLOAT)
+				{
+					auto pixel = dst + pixelIndex * 4;
+					WriteUint16(pixel, GetHalfValue(r));
+					WriteUint16(pixel + 2, GetHalfValue(g));
+				}
+				else if (format == LLGI::TextureFormatType::R32G32_FLOAT)
+				{
+					auto pixel = dst + pixelIndex * 8;
+					WriteFloat(pixel, r / 255.0f);
+					WriteFloat(pixel + 4, g / 255.0f);
+				}
+				else if (format == LLGI::TextureFormatType::R16G16B16A16_FLOAT)
+				{
+					auto pixel = dst + pixelIndex * 8;
+					WriteUint16(pixel, GetHalfValue(r));
+					WriteUint16(pixel + 2, GetHalfValue(g));
+					WriteUint16(pixel + 4, GetHalfValue(b));
+					WriteUint16(pixel + 6, GetHalfValue(255));
+				}
+				else if (format == LLGI::TextureFormatType::R32G32B32A32_FLOAT)
+				{
+					auto pixel = dst + pixelIndex * 16;
+					WriteFloat(pixel, r / 255.0f);
+					WriteFloat(pixel + 4, g / 255.0f);
+					WriteFloat(pixel + 8, b / 255.0f);
+					WriteFloat(pixel + 12, 1.0f);
+				}
 			}
 		}
 	}
@@ -256,12 +259,20 @@ std::vector<uint8_t> TextureDataGenerator::CreateDummyTextureData(
 	LLGI::TextureFormatType format,
 	int32_t mipLevelCount)
 {
+	return CreateDummyTextureData(LLGI::Vec3I(size.X, size.Y, 1), format, mipLevelCount, false);
+}
+
+std::vector<uint8_t> TextureDataGenerator::CreateDummyTextureData(
+	LLGI::Vec3I size,
+	LLGI::TextureFormatType format,
+	int32_t mipLevelCount,
+	bool preserveDepth)
+{
 	std::vector<uint8_t> ret;
-	const auto baseSize = LLGI::Vec3I(size.X, size.Y, 1);
 
 	for (int32_t mipLevel = 0; mipLevel < mipLevelCount; mipLevel++)
 	{
-		const auto mipSize = LLGI::GetTextureMipSize(baseSize, mipLevel);
+		const auto mipSize = LLGI::GetTextureMipSize(size, mipLevel, preserveDepth);
 		const auto mipDataSize = static_cast<size_t>(LLGI::GetTextureMemorySize(format, mipSize));
 		const auto offset = ret.size();
 		ret.resize(offset + mipDataSize);
@@ -282,7 +293,7 @@ std::vector<uint8_t> TextureDataGenerator::CreateDummyTextureData(
 
 void TextureDataGenerator::WriteDummyTexture(LLGI::Texture* texture)
 {
-	auto dummyData = CreateDummyTextureData(texture->GetSizeAs2D(), texture->GetFormat());
+	auto dummyData = CreateDummyTextureData(texture->GetSizeAs2D(), texture->GetFormat(), texture->GetMipmapCount());
 
 	auto data = texture->Lock();
 	memcpy(data, dummyData.data(), dummyData.size());

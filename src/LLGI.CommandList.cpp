@@ -37,6 +37,118 @@ void CommandList::RegisterReferencedObject(ReferenceObject* referencedObject)
 	swapObjects[swapIndex_].referencedObjects.push_back(referencedObject);
 }
 
+bool CommandList::ValidateDrawState(const char* backendName,
+									int32_t primitiveCount,
+									int32_t instanceCount,
+									BindingVertexBuffer& vertexBuffer,
+									BindingIndexBuffer& indexBuffer,
+									PipelineState*& pipelineState,
+									bool& outIsVertexBufferDirtied,
+									bool& outIsIndexBufferDirtied,
+									bool& outIsPipelineDirtied)
+{
+	const auto prefix = std::string(backendName != nullptr ? backendName : "CommandList") + "::Draw skipped: ";
+	if (!isInRenderPass_)
+	{
+		Log(LogType::Warning, prefix + "Draw must be called inside RenderPass.");
+		return false;
+	}
+	if (primitiveCount <= 0 || instanceCount <= 0)
+	{
+		Log(LogType::Warning,
+			prefix + "invalid draw count. primitives=" + std::to_string(primitiveCount) +
+				", instances=" + std::to_string(instanceCount));
+		return false;
+	}
+
+	GetCurrentVertexBuffer(vertexBuffer, outIsVertexBufferDirtied);
+	GetCurrentIndexBuffer(indexBuffer, outIsIndexBufferDirtied);
+	GetCurrentPipelineState(pipelineState, outIsPipelineDirtied);
+
+	if (vertexBuffer.vertexBuffer == nullptr)
+	{
+		Log(LogType::Error, prefix + "vertex buffer is not specified.");
+		return false;
+	}
+	if (indexBuffer.indexBuffer == nullptr)
+	{
+		Log(LogType::Error, prefix + "index buffer is not specified.");
+		return false;
+	}
+	if (pipelineState == nullptr)
+	{
+		Log(LogType::Error, prefix + "pipeline state is not specified.");
+		return false;
+	}
+	if (GetIndexCountPerPrimitive(pipelineState->Topology) == 0)
+	{
+		Log(LogType::Error, prefix + "unsupported topology. topology=" + to_string(pipelineState->Topology));
+		return false;
+	}
+	if (vertexBuffer.stride <= 0)
+	{
+		Log(LogType::Error, prefix + "invalid vertex stride. stride=" + std::to_string(vertexBuffer.stride));
+		return false;
+	}
+	if (vertexBuffer.offset < 0 || indexBuffer.offset < 0)
+	{
+		Log(LogType::Error,
+			prefix + "invalid buffer offset. vertexOffset=" + std::to_string(vertexBuffer.offset) +
+				", indexOffset=" + std::to_string(indexBuffer.offset));
+		return false;
+	}
+	if (indexBuffer.stride != 2 && indexBuffer.stride != 4)
+	{
+		Log(LogType::Error, prefix + "unsupported index stride. stride=" + std::to_string(indexBuffer.stride));
+		return false;
+	}
+
+	return true;
+}
+
+bool CommandList::ValidateDispatchState(const char* backendName,
+										int32_t groupX,
+										int32_t groupY,
+										int32_t groupZ,
+										int32_t threadX,
+										int32_t threadY,
+										int32_t threadZ,
+										PipelineState*& pipelineState,
+										bool& outIsPipelineDirtied)
+{
+	const auto prefix = std::string(backendName != nullptr ? backendName : "CommandList") + "::Dispatch skipped: ";
+	if (isInRenderPass_)
+	{
+		Log(LogType::Error, prefix + "Dispatch must be called outside RenderPass.");
+		return false;
+	}
+	if (groupX <= 0 || groupY <= 0 || groupZ <= 0)
+	{
+		Log(LogType::Error,
+			prefix + "invalid group count. groups=(" + std::to_string(groupX) + ", " + std::to_string(groupY) + ", " +
+				std::to_string(groupZ) + "), threads=(" + std::to_string(threadX) + ", " + std::to_string(threadY) + ", " +
+				std::to_string(threadZ) + ")");
+		return false;
+	}
+	if (threadX <= 0 || threadY <= 0 || threadZ <= 0)
+	{
+		Log(LogType::Error,
+			prefix + "invalid thread count. groups=(" + std::to_string(groupX) + ", " + std::to_string(groupY) + ", " +
+				std::to_string(groupZ) + "), threads=(" + std::to_string(threadX) + ", " + std::to_string(threadY) + ", " +
+				std::to_string(threadZ) + ")");
+		return false;
+	}
+
+	GetCurrentPipelineState(pipelineState, outIsPipelineDirtied);
+	if (pipelineState == nullptr)
+	{
+		Log(LogType::Error, prefix + "pipeline state is not specified.");
+		return false;
+	}
+
+	return true;
+}
+
 CommandList::CommandList(int32_t swapCount) : swapCount_(swapCount)
 {
 	constantBuffers_.fill(nullptr);
@@ -194,6 +306,14 @@ void CommandList::SetPipelineState(PipelineState* pipelineState)
 
 void CommandList::SetConstantBuffer(Buffer* constantBuffer, int32_t unit)
 {
+	if (unit < 0 || unit >= NumConstantBuffer)
+	{
+		Log(LogType::Error,
+			std::string("Constant buffer slot is out of range. slot=") + std::to_string(unit) +
+				", max=" + std::to_string(NumConstantBuffer - 1));
+		return;
+	}
+
 	SafeAssign(constantBuffers_[unit], constantBuffer);
 
 	RegisterReferencedObject(constantBuffer);
@@ -215,7 +335,10 @@ void CommandList::SetStorageBuffer(Buffer* storageBuffer, const ShaderResourceBi
 {
 	if (binding.Slot < 0 || binding.Slot >= NumStorageBuffer)
 	{
-		Log(LogType::Error, "Storage buffer slot is out of range.");
+		Log(LogType::Error,
+			std::string("Storage buffer slot is out of range. slot=") + std::to_string(binding.Slot) +
+				", max=" + std::to_string(NumStorageBuffer - 1) + ", group=" + std::to_string(binding.Group) +
+				", stride=" + std::to_string(binding.ElementStride));
 		return;
 	}
 
@@ -230,6 +353,14 @@ void CommandList::SetStorageBuffer(Buffer* storageBuffer, const ShaderResourceBi
 
 void CommandList::SetTexture(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter minmagFilter, int32_t unit)
 {
+	if (unit < 0 || unit >= NumTexture)
+	{
+		Log(LogType::Error,
+			std::string("Texture slot is out of range. slot=") + std::to_string(unit) +
+				", max=" + std::to_string(NumTexture - 1));
+		return;
+	}
+
 	SafeAssign(currentTextures_[unit].texture, texture);
 	currentTextures_[unit].wrapMode = wrapMode;
 	currentTextures_[unit].minMagFilter = minmagFilter;

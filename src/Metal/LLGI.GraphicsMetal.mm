@@ -200,6 +200,11 @@ GraphicsMetal::CreateRenderPass(Texture* texture, Texture* resolvedTexture, Text
 
 Texture* GraphicsMetal::CreateTexture(const TextureParameter& parameter)
 {
+	if (!ValidateTextureParameter(parameter, "GraphicsMetal::CreateTexture", 2))
+	{
+		return nullptr;
+	}
+
 	auto obj = new TextureMetal();
 	if (!obj->Initialize(this, parameter))
 	{
@@ -211,52 +216,48 @@ Texture* GraphicsMetal::CreateTexture(const TextureParameter& parameter)
 
 Texture* GraphicsMetal::CreateTexture(const TextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = parameter.MipMapCount;
-	param.IsMipmapGenerationEnabled = parameter.MipMapCount > 1;
-	param.SampleCount = 1;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsMetal::CreateTexture(TextureInitializationParameter)", 2))
+	{
+		return nullptr;
+	}
 	return CreateTexture(param);
 }
 
 Texture* GraphicsMetal::CreateRenderTexture(const RenderTextureInitializationParameter& parameter)
 {
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = parameter.Format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
-	param.Usage = TextureUsageType::RenderTarget;
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsMetal::CreateRenderTexture", 2))
+	{
+		return nullptr;
+	}
 	return CreateTexture(param);
 }
 
 Texture* GraphicsMetal::CreateDepthTexture(const DepthTextureInitializationParameter& parameter)
 {
-	auto format = TextureFormatType::D32;
 	if (parameter.Mode == DepthTextureMode::DepthStencil)
 	{
-		format = TextureFormatType::D24S8;
-
 		if (!GetDevice().isDepth24Stencil8PixelFormatSupported)
 		{
 			return nullptr;
 		}
 	}
 
-	TextureParameter param;
-	param.Dimension = 2;
-	param.Format = format;
-	param.MipLevelCount = 1;
-	param.SampleCount = parameter.SamplingCount;
-	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
+	auto param = ToTextureParameter(parameter);
+	if (!ValidateTextureParameter(param, "GraphicsMetal::CreateDepthTexture", 2))
+	{
+		return nullptr;
+	}
 	return CreateTexture(param);
 }
 
 Texture* GraphicsMetal::CreateTexture(uint64_t texid)
 {
+	if (!ValidateExternalTextureID(texid, "GraphicsMetal::CreateTexture(external)"))
+	{
+		return nullptr;
+	}
 
 	auto o = new TextureMetal();
 	if (o->Initialize(this, id<MTLTexture>(texid)))

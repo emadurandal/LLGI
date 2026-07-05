@@ -211,17 +211,25 @@ void CommandListMetal::Draw(int32_t primitiveCount, int32_t instanceCount)
 	bool isIBDirtied = false;
 	bool isPipDirtied = false;
 
-	GetCurrentVertexBuffer(bvb, isVBDirtied);
-	GetCurrentIndexBuffer(bib, isIBDirtied);
-	GetCurrentPipelineState(bpip, isPipDirtied);
+	if (!ValidateDrawState("CommandListMetal", primitiveCount, instanceCount, bvb, bib, bpip, isVBDirtied, isIBDirtied, isPipDirtied))
+	{
+		return;
+	}
 
-	assert(bvb.vertexBuffer != nullptr);
-	assert(bib.indexBuffer != nullptr);
-	assert(bpip != nullptr);
+	if (renderEncoder_ == nullptr)
+	{
+		Log(LogType::Error, "CommandListMetal::Draw skipped: render encoder is null.");
+		return;
+	}
 
 	auto vb = static_cast<BufferMetal*>(bvb.vertexBuffer);
 	auto ib = static_cast<BufferMetal*>(bib.indexBuffer);
 	auto pip = static_cast<PipelineStateMetal*>(bpip);
+	if (pip->GetRenderPipelineState() == nullptr)
+	{
+		Log(LogType::Error, "CommandListMetal::Draw skipped: render pipeline state is null.");
+		return;
+	}
 
 	// set cull mode
 	if (pip->Culling == LLGI::CullingMode::Clockwise)
@@ -305,29 +313,26 @@ void CommandListMetal::Draw(int32_t primitiveCount, int32_t instanceCount)
 	// draw
 	MTLPrimitiveType topology = MTLPrimitiveTypeTriangle;
 	MTLIndexType indexType = MTLIndexTypeUInt32;
-	int indexPerPrim = 0;
+	const auto indexPerPrim = GetIndexCountPerPrimitive(bpip->Topology);
+	if (indexPerPrim == 0)
+	{
+		Log(LogType::Error, "CommandListMetal::Draw skipped: unsupported topology. topology=" + to_string(bpip->Topology));
+		return;
+	}
 
 	if (bpip->Topology == TopologyType::Triangle)
 	{
-		indexPerPrim = 3;
 		topology = MTLPrimitiveTypeTriangle;
 	}
 	else if (bpip->Topology == TopologyType::Line)
 	{
-		indexPerPrim = 2;
 		topology = MTLPrimitiveTypeLine;
 	}
 	else if (bpip->Topology == TopologyType::Point)
 	{
-		indexPerPrim = 1;
 		topology = MTLPrimitiveTypePoint;
 	}
-	else
-	{
-		assert(0);
-	}
 
-	assert(bib.stride == 2 || bib.stride == 4);
 	if (bib.stride == 2)
 	{
 		indexType = MTLIndexTypeUInt16;
@@ -590,12 +595,23 @@ void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, 
 
 	bool isPipDirtied = false;
 
-	GetCurrentPipelineState(bpip, isPipDirtied);
+	if (!ValidateDispatchState("CommandListMetal", groupX, groupY, groupZ, threadX, threadY, threadZ, bpip, isPipDirtied))
+	{
+		return;
+	}
 
-	assert(bpip != nullptr);
-	assert(computeEncoder_ != nullptr);
+	if (computeEncoder_ == nullptr)
+	{
+		Log(LogType::Error, "CommandListMetal::Dispatch skipped: compute encoder is null.");
+		return;
+	}
 
 	auto pip = static_cast<PipelineStateMetal*>(bpip);
+	if (pip->GetComputePipelineState() == nullptr)
+	{
+		Log(LogType::Error, "CommandListMetal::Dispatch skipped: compute pipeline state is null.");
+		return;
+	}
 
     const int compute_offset = 10;
     
