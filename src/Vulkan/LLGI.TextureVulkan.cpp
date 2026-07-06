@@ -388,6 +388,11 @@ void TextureVulkan::Unlock()
 	ResourceBarrier(copyCommandBuffer, imageLayout);
 	copyCommandBuffer.copyBufferToImage(cpuBuf->buffer(), image_, imageLayout, static_cast<uint32_t>(imageRegions.size()), imageRegions.data());
 	ResourceBarrier(copyCommandBuffer, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+	// GetIsMipmapGenerationSupportedOnTextureLoad of GraphicsVulkan returns true,
+	// so mipmaps must be generated when texture data is transferred.
+	RecordMipmapGenerationCommands(copyCommandBuffer);
+
 	copyCommandBuffer.end();
 
 	// submit and wait to execute command
@@ -406,6 +411,52 @@ void TextureVulkan::Unlock()
 	graphics_->GetQueue().waitIdle();
 
 	graphics_->GetDevice().freeCommandBuffers(graphics_->GetCommandPool(), copyCommandBuffer);
+}
+
+bool TextureVulkan::RecordMipmapGenerationCommands(vk::CommandBuffer& commandBuffer)
+{
+	if (!parameter_.IsMipmapGenerationEnabled || GetMipmapCount() <= 1 || IsBlockCompressedFormat(parameter_.Format) ||
+		BitwiseContains(parameter_.Usage, TextureUsageType::Array))
+	{
+		return false;
+	}
+
+	int32_t mipWidth = GetSizeAs2D().X;
+	int32_t mipHeight = GetSizeAs2D().Y;
+
+	for (int32_t i = 1; i < GetMipmapCount(); i++)
+	{
+		ResourceBarrier(i - 1, commandBuffer, vk::ImageLayout::eTransferSrcOptimal);
+		ResourceBarrier(i, commandBuffer, vk::ImageLayout::eTransferDstOptimal);
+
+		vk::ImageBlit blit{};
+		blit.srcOffsets[0] = vk::Offset3D(0, 0, 0);
+		blit.srcOffsets[1] = vk::Offset3D(mipWidth, mipHeight, 1);
+		blit.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+		blit.srcSubresource.mipLevel = i - 1;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+		blit.dstOffsets[0] = vk::Offset3D(0, 0, 0);
+		blit.dstOffsets[1] = vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1);
+		blit.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+		blit.dstSubresource.mipLevel = i;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+
+		commandBuffer.blitImage(image_,
+								vk::ImageLayout::eTransferSrcOptimal,
+								image_,
+								vk::ImageLayout::eTransferDstOptimal,
+								1,
+								&blit,
+								vk::Filter::eLinear);
+
+		mipWidth = mipWidth > 1 ? mipWidth / 2 : 1;
+		mipHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+	}
+
+	ResourceBarrier(commandBuffer, vk::ImageLayout::eShaderReadOnlyOptimal);
+	return true;
 }
 
 bool TextureVulkan::GetData(std::vector<uint8_t>& data)

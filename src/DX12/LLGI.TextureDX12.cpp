@@ -356,6 +356,42 @@ FAILED_EXIT:
 	{
 		CloseHandle(event);
 	}
+
+	GenerateMipmapsOnLoad();
+}
+
+void TextureDX12::GenerateMipmapsOnLoad()
+{
+	// GetIsMipmapGenerationSupportedOnTextureLoad of GraphicsDX12 returns true,
+	// so mipmaps must be generated when texture data is transferred.
+	const bool canGenerate = parameter_.IsMipmapGenerationEnabled && parameter_.MipLevelCount > 1 && parameter_.Dimension == 2 &&
+							 parameter_.SampleCount == 1 && !BitwiseContains(parameter_.Usage, TextureUsageType::Array) &&
+							 !IsBlockCompressedFormat(parameter_.Format);
+	if (!canGenerate || graphics_ == nullptr)
+	{
+		return;
+	}
+
+	auto memoryPool = CreateSharedPtr(graphics_->CreateSingleFrameMemoryPool(1024, 1));
+	if (memoryPool == nullptr)
+	{
+		Log(LogType::Error, "Failed to create a memory pool for mipmap generation.");
+		return;
+	}
+
+	auto generationCommandList = CreateSharedPtr(graphics_->CreateCommandList(memoryPool.get()));
+	if (generationCommandList == nullptr)
+	{
+		Log(LogType::Error, "Failed to create a command list for mipmap generation.");
+		return;
+	}
+
+	memoryPool->NewFrame();
+	generationCommandList->Begin();
+	generationCommandList->GenerateMipMap(this);
+	generationCommandList->End();
+	graphics_->Execute(generationCommandList.get());
+	generationCommandList->WaitUntilCompleted();
 }
 
 bool TextureDX12::GetData(std::vector<uint8_t>& data)

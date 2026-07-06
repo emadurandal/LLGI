@@ -35,6 +35,8 @@ private:
 
 	void CreateUploadReadbackBuffer();
 
+	void GenerateMipmapsOnLoad();
+
 public:
 	TextureDX12(GraphicsDX12* graphics, bool hasStrongRef);
 

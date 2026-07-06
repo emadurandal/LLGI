@@ -78,6 +78,12 @@ public:
 	void ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::ImageLayout& imageLayout);
 
 	void ResourceBarrier(int32_t mipLevel, vk::CommandBuffer& commandBuffer, const vk::ImageLayout& imageLayout);
+
+	/**
+		@brief	record commands to generate mipmaps from the top level into a command buffer
+		@return	whether commands are recorded
+	*/
+	bool RecordMipmapGenerationCommands(vk::CommandBuffer& commandBuffer);
 };
 
 } // namespace LLGI

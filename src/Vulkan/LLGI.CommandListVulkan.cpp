@@ -660,41 +660,7 @@ void CommandListVulkan::GenerateMipMap(Texture* src)
 		return;
 	}
 
-	int32_t mipWidth = src->GetSizeAs2D().X;
-	int32_t mipHeight = src->GetSizeAs2D().Y;
-
-	for (int32_t i = 1; i < src->GetMipmapCount(); i++)
-	{
-		srcTex->ResourceBarrier(i - 1, currentCommandBuffer_, vk::ImageLayout::eTransferSrcOptimal);
-		srcTex->ResourceBarrier(i, currentCommandBuffer_, vk::ImageLayout::eTransferDstOptimal);
-
-		vk::ImageBlit blit{};
-		blit.srcOffsets[0] = vk::Offset3D(0, 0, 0);
-		blit.srcOffsets[1] = vk::Offset3D(mipWidth, mipHeight, 1);
-		blit.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-		blit.srcSubresource.mipLevel = i - 1;
-		blit.srcSubresource.baseArrayLayer = 0;
-		blit.srcSubresource.layerCount = 1;
-		blit.dstOffsets[0] = vk::Offset3D(0, 0, 0);
-		blit.dstOffsets[1] = vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1);
-		blit.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-		blit.dstSubresource.mipLevel = i;
-		blit.dstSubresource.baseArrayLayer = 0;
-		blit.dstSubresource.layerCount = 1;
-
-		currentCommandBuffer_.blitImage(srcTex->GetImage(),
-										vk::ImageLayout::eTransferSrcOptimal,
-										srcTex->GetImage(),
-										vk::ImageLayout::eTransferDstOptimal,
-										1,
-										&blit,
-										vk::Filter::eLinear);
-
-		mipWidth = mipWidth > 1 ? mipWidth / 2 : 1;
-		mipHeight = mipHeight > 1 ? mipHeight / 2 : 1;
-	}
-
-	srcTex->ResourceBarrier(currentCommandBuffer_, vk::ImageLayout::eShaderReadOnlyOptimal);
+	srcTex->RecordMipmapGenerationCommands(currentCommandBuffer_);
 }
 
 void CommandListVulkan::CopyBuffer(Buffer* src, Buffer* dst)
