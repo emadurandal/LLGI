@@ -21,6 +21,7 @@ private:
 
 	bool Initialize(id<MTLDevice> device, const TextureParameter& parameter);
 	void Write(const uint8_t* data);
+	void GenerateMipmapsOnLoad();
 
 public:
 	TextureMetal();

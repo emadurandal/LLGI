@@ -177,6 +177,9 @@ TextureMetal::~TextureMetal()
 
 bool TextureMetal::Initialize(GraphicsMetal* owner, const TextureParameter& parameter)
 {
+	auto ownerRef = static_cast<ReferenceObject*>(owner);
+	SafeAssign(owner_, ownerRef);
+
 	type_ = TextureType::Color;
 	if (!Initialize(owner->GetDevice(), parameter))
 	{
@@ -192,6 +195,9 @@ bool TextureMetal::Initialize(GraphicsMetal* owner, const TextureParameter& para
 
 bool TextureMetal::Initialize(GraphicsMetal* owner, id<MTLTexture> externalTexture)
 {
+	auto ownerRef = static_cast<ReferenceObject*>(owner);
+	SafeAssign(owner_, ownerRef);
+
 	if (externalTexture == nullptr)
 	{
 		return false;
@@ -241,7 +247,32 @@ void TextureMetal::Reset(id<MTLTexture> nativeTexture)
 
 void* TextureMetal::Lock() { return data_.data(); }
 
-void TextureMetal::Unlock() { Write(data_.data()); }
+void TextureMetal::Unlock()
+{
+	Write(data_.data());
+	GenerateMipmapsOnLoad();
+}
+
+void TextureMetal::GenerateMipmapsOnLoad()
+{
+	// GraphicsMetal advertises load-time mipmap generation support, so loaded textures
+	// must generate their mip levels before delayed command queues can sample them.
+	const bool canGenerate = parameter_.IsMipmapGenerationEnabled && parameter_.MipLevelCount > 1 &&
+							 !IsBlockCompressedFormat(parameter_.Format) &&
+							 !BitwiseContains(parameter_.Usage, TextureUsageType::Array);
+	if (!canGenerate || owner_ == nullptr)
+	{
+		return;
+	}
+
+	auto graphics = static_cast<GraphicsMetal*>(owner_);
+	id<MTLCommandBuffer> commandBuffer = [graphics->GetCommandQueue() commandBuffer];
+	id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+	[blitEncoder generateMipmapsForTexture:texture_];
+	[blitEncoder endEncoding];
+	[commandBuffer commit];
+	[commandBuffer waitUntilCompleted];
+}
 
 bool TextureMetal::GetData(std::vector<uint8_t>& data)
 {
