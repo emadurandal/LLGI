@@ -48,7 +48,9 @@ bool CommandList::ValidateDrawState(const char* backendName,
 									bool& outIsPipelineDirtied)
 {
 	const auto prefix = std::string(backendName != nullptr ? backendName : "CommandList") + "::Draw skipped: ";
-	if (!isInRenderPass_)
+	// When the command list wraps an external one, the render pass state is managed
+	// outside of LLGI, so it cannot be validated.
+	if (!isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Warning, prefix + "Draw must be called inside RenderPass.");
 		return false;
@@ -117,7 +119,9 @@ bool CommandList::ValidateDispatchState(const char* backendName,
 										bool& outIsPipelineDirtied)
 {
 	const auto prefix = std::string(backendName != nullptr ? backendName : "CommandList") + "::Dispatch skipped: ";
-	if (isInRenderPass_)
+	// When the command list wraps an external one, the render pass state is managed
+	// outside of LLGI, so it cannot be validated.
+	if (isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Error, prefix + "Dispatch must be called outside RenderPass.");
 		return false;

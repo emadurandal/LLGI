@@ -600,7 +600,7 @@ void CommandListVulkan::CopyTexture(Texture* src, Texture* dst)
 void CommandListVulkan::CopyTexture(
 	Texture* src, Texture* dst, const Vec3I& srcPos, const Vec3I& dstPos, const Vec3I& size, int srcLayer, int dstLayer)
 {
-	if (isInRenderPass_)
+	if (isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Error, "Please call CopyTexture outside of RenderPass");
 		return;

@@ -359,7 +359,7 @@ void CommandListMetal::CopyTexture(
 {
 	@autoreleasepool
 	{
-		if (isInRenderPass_)
+		if (isInRenderPass_ && !doesBeginWithPlatform_)
 		{
 			Log(LogType::Error, "Please call CopyTexture outside of RenderPass");
 			return;

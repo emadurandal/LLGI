@@ -107,7 +107,7 @@ void CommandListWebGPU::SetComputeBindGroup(
 
 bool CommandListWebGPU::PrepareStandaloneCommand(const char* commandName)
 {
-	if (isInRenderPass_)
+	if (isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Error, std::string("Please call ") + commandName + " outside of RenderPass");
 		return false;

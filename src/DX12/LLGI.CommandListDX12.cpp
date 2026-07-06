@@ -917,7 +917,7 @@ void CommandListDX12::CopyTexture(Texture* src, Texture* dst)
 void CommandListDX12::CopyTexture(
 	Texture* src, Texture* dst, const Vec3I& srcPos, const Vec3I& dstPos, const Vec3I& size, int srcLayer, int dstLayer)
 {
-	if (isInRenderPass_)
+	if (isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Error, "Please call CopyTexture outside of RenderPass");
 		return;
@@ -960,7 +960,7 @@ void CommandListDX12::CopyTexture(
 
 void CommandListDX12::GenerateMipMap(Texture* src)
 {
-	if (isInRenderPass_)
+	if (isInRenderPass_ && !doesBeginWithPlatform_)
 	{
 		Log(LogType::Error, "Please call GenerateMipMap outside of RenderPass");
 		return;

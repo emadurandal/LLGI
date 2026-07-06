@@ -73,9 +73,10 @@ private:
 	bool isVertexBufferDirtied = true;
 	bool isCurrentIndexBufferDirtied = true;
 	bool isPipelineDirtied = true;
-	bool doesBeginWithPlatform_ = false;
 
 protected:
+	//! whether the command list wraps an external one whose render pass state is managed outside of LLGI
+	bool doesBeginWithPlatform_ = false;
 	bool isInRenderPass_ = false;
 	bool isInBegin_ = false;
 
