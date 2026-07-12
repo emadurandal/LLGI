@@ -98,6 +98,20 @@ def run_shader_transpiler(
     shader_model=None,
     extra_args=None,
 ):
+    output_path = Path(output_path)
+    line_ending = "\n"
+    trailing_newline_count = 1
+    if output_path.suffix.lower() != ".spv" and output_path.exists():
+        with output_path.open("r", encoding="utf-8", newline="") as previous_output:
+            previous_source = previous_output.read()
+        if "\r\n" in previous_source:
+            line_ending = "\r\n"
+        elif "\r" in previous_source:
+            line_ending = "\r"
+        previous_suffix = previous_source[len(previous_source.rstrip("\r\n")) :]
+        previous_suffix = previous_suffix.replace("\r\n", "\n").replace("\r", "\n")
+        trailing_newline_count = len(previous_suffix)
+
     command = [
         str(shader_transpiler),
         STAGE_ARGS[stage],
@@ -122,6 +136,14 @@ def run_shader_transpiler(
     if extra_args is not None:
         command += [str(arg) for arg in extra_args]
 
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     print("Transpile " + str(input_path), flush=True)
     subprocess.run(command, check=True)
+
+    if output_path.suffix.lower() != ".spv":
+        with output_path.open("r", encoding="utf-8", newline="") as generated_output:
+            source = generated_output.read()
+        source = source.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+        source = source.replace("\n", line_ending)
+        with output_path.open("w", encoding="utf-8", newline="") as output:
+            output.write(source + line_ending * trailing_newline_count)
