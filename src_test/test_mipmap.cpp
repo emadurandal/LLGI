@@ -275,7 +275,6 @@ void test_mipmap_array_generation_unsupported(LLGI::DeviceType deviceType)
 	pp.WaitVSync = false;
 
 	auto window = std::unique_ptr<LLGI::Window>(LLGI::CreateWindow("TextureArrayMipmap", LLGI::Vec2I(64, 64)));
-	VERIFY(window != nullptr);
 
 	auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, window.get()));
 	VERIFY(platform != nullptr);

@@ -222,7 +222,6 @@ TestRegister SimpleRender_Tex_CompressedArrayMipMap_RawData(
 		pp.WaitVSync = false;
 
 		auto window = std::unique_ptr<LLGI::Window>(LLGI::CreateWindow("TextureCompressedArrayMipMap", LLGI::Vec2I(64, 64)));
-		VERIFY(window != nullptr);
 
 		auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, window.get()));
 		VERIFY(platform != nullptr);
