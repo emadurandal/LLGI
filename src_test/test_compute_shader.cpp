@@ -119,6 +119,7 @@ void test_compute_shader_storage_buffer(LLGI::DeviceType deviceType, bool is_rea
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	{
@@ -223,6 +224,7 @@ void test_compute_shader_texture(LLGI::DeviceType deviceType)
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	std::vector<uint8_t> result;

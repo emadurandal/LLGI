@@ -216,6 +216,7 @@ void test_compute_shader_storage_buffer_structured_slot1(LLGI::DeviceType device
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto result = static_cast<const StructuredOutputData*>(readbackBuffer->Lock());
@@ -309,6 +310,7 @@ void test_compute_shader_storage_buffer_slot1_pass_transition(LLGI::DeviceType d
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto result = static_cast<const SlotTransitionOutputData*>(readbackBuffer->Lock());
@@ -434,6 +436,7 @@ void test_compute_shader_storage_buffer_multi_slot_read_write(LLGI::DeviceType d
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto resultA = static_cast<const MultiSlotOutputA*>(readbackA->Lock());
@@ -552,6 +555,7 @@ void test_compute_shader_storage_buffer_structured_matrix_record(LLGI::DeviceTyp
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto result = static_cast<const StructuredMatrixRecordOutput*>(readbackBuffer->Lock());
@@ -684,6 +688,7 @@ void test_compute_shader_storage_buffer_matrix_indexing(LLGI::DeviceType deviceT
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto result = static_cast<const MatrixIndexingOutput*>(readbackBuffer->Lock());
@@ -796,6 +801,7 @@ void test_compute_shader_storage_buffer_rebind_same_slot(LLGI::DeviceType device
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto verify = [](const SlotTransitionData* result, const char* label, int count) {
@@ -878,6 +884,7 @@ void test_compute_shader_storage_buffer_copy_to_smaller_buffer(LLGI::DeviceType 
 	commandList->End();
 
 	graphics->Execute(commandList);
+	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	auto result = static_cast<const SlotTransitionData*>(readbackBuffer->Lock());
