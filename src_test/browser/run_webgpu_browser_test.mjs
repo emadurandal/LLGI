@@ -339,14 +339,26 @@ class RawWebSocket {
 
 class CdpClient {
 	constructor(webSocketUrl) {
+		this.webSocketUrl = webSocketUrl;
 		this.nextId = 1;
 		this.pending = new Map();
 		this.handlers = new Map();
-		this.socket = new RawWebSocket(webSocketUrl, (text) => this.onMessage(text));
+		this.socket = null;
+		this.usesNativeWebSocket = typeof WebSocket !== 'undefined';
 	}
 
 	async open() {
-		await this.socket.open();
+		if (this.usesNativeWebSocket) {
+			this.socket = new WebSocket(this.webSocketUrl);
+			this.socket.addEventListener('message', (event) => this.onMessage(String(event.data)));
+			await withTimeout(new Promise((resolve, reject) => {
+				this.socket.addEventListener('open', resolve, {once: true});
+				this.socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed.')), {once: true});
+			}), 10000, 'Timed out opening Chrome DevTools WebSocket.');
+		} else {
+			this.socket = new RawWebSocket(this.webSocketUrl, (text) => this.onMessage(text));
+			await this.socket.open();
+		}
 	}
 
 	on(eventName, handler) {
@@ -375,14 +387,17 @@ class CdpClient {
 
 	send(method, params = {}, timeoutMs = 10000) {
 		const id = this.nextId++;
-		this.socket.sendText(JSON.stringify({id, method, params}));
-		return withTimeout(new Promise((resolve, reject) => {
+		const response = new Promise((resolve, reject) => {
 			this.pending.set(id, {resolve, reject});
-		}), timeoutMs, `Timed out waiting for Chrome DevTools method ${method}.`);
+		});
+		const message = JSON.stringify({id, method, params});
+		if (this.usesNativeWebSocket) this.socket.send(message);
+		else this.socket.sendText(message);
+		return withTimeout(response, timeoutMs, `Timed out waiting for Chrome DevTools method ${method}.`);
 	}
 
 	close() {
-		this.socket.close();
+		if (this.socket) this.socket.close();
 	}
 }
 
@@ -506,6 +521,31 @@ async function processCanvasCaptureRequests(client, processedRequestIds) {
 	}
 }
 
+async function processDataCaptureRequests(client, processedRequestIds) {
+	if (!captureDir) {
+		return;
+	}
+
+	const requests = await evaluateJson(client, `(() => {
+		const module = globalThis.Module;
+		if (!module || !Array.isArray(module.llgiWebGPUDataCaptureRequests)) return [];
+		return module.llgiWebGPUDataCaptureRequests.map((request) => ({
+			id: String(request.id || ''),
+			name: String(request.name || ''),
+			base64: String(request.base64 || '')
+		}));
+	})()`);
+	for (const request of requests || []) {
+		if (!request.id || processedRequestIds.has(request.id)) continue;
+		processedRequestIds.add(request.id);
+		let captureName = sanitizeCaptureName(request.name);
+		if (!captureName.toLowerCase().endsWith('.png')) captureName += '.png';
+		const outputPath = path.join(captureDir, captureName);
+		fs.writeFileSync(outputPath, Buffer.from(request.base64, 'base64'));
+		console.log(`[capture] ${outputPath}`);
+	}
+}
+
 async function waitForTestResult(client, timeoutMs, onPoll) {
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
@@ -568,8 +608,14 @@ try {
 	await client.send('Page.enable');
 	await client.send('Page.navigate', {url: url.toString()});
 	const processedCaptureRequestIds = new Set();
-	const value = await waitForTestResult(client, 60000, () => processCanvasCaptureRequests(client, processedCaptureRequestIds));
+	const processedDataCaptureRequestIds = new Set();
+	const processCaptures = async () => {
+		await processCanvasCaptureRequests(client, processedCaptureRequestIds);
+		await processDataCaptureRequests(client, processedDataCaptureRequestIds);
+	};
+	const value = await waitForTestResult(client, 60000, processCaptures);
 	await processCanvasCaptureRequests(client, processedCaptureRequestIds);
+	await processDataCaptureRequests(client, processedDataCaptureRequestIds);
 	if (!value || value.status !== 'passed') {
 		console.error(value && value.message ? value.message : 'LLGI browser WebGPU test failed.');
 		process.exitCode = 1;
@@ -581,6 +627,11 @@ try {
 			process.exitCode = 1;
 		}
 	}
+} catch (error) {
+	if (chromeStderr.trim()) {
+		console.error(chromeStderr.trim());
+	}
+	throw error;
 } finally {
 	if (client) {
 		await client.send('Browser.close', {}, 2000).catch(() => {});
