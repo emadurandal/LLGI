@@ -627,6 +627,14 @@ std::vector<uint8_t> Graphics::CaptureRenderTarget(Texture* renderTarget)
 	return std::vector<uint8_t>();
 }
 
+void Graphics::CaptureRenderTargetAsync(Texture* renderTarget, std::function<void(std::vector<uint8_t>)> callback)
+{
+	if (callback)
+	{
+		callback(CaptureRenderTarget(renderTarget));
+	}
+}
+
 void Graphics::SetDisposed(const std::function<void()>& disposed) { disposed_ = disposed; }
 
 } // namespace LLGI

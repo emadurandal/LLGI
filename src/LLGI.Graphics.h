@@ -305,6 +305,9 @@ public:
 	/** For testing. Wait for all commands in queue to complete. Then read data from specified render target. */
 	virtual std::vector<uint8_t> CaptureRenderTarget(Texture* renderTarget);
 
+	/** Read a render target without blocking the calling thread. */
+	virtual void CaptureRenderTargetAsync(Texture* renderTarget, std::function<void(std::vector<uint8_t>)> callback);
+
 	/**
 		@brief	create a Query
 		@note

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <thread>
 
 #if defined(__EMSCRIPTEN__)
@@ -400,6 +401,84 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 	}
 	readbackBuffer.Unmap();
 	return ret;
+}
+
+void GraphicsWebGPU::CaptureRenderTargetAsync(Texture* renderTarget, std::function<void(std::vector<uint8_t>)> callback)
+{
+	struct ReadbackState
+	{
+		wgpu::Buffer Buffer;
+		uint32_t UnalignedBytesPerRow = 0;
+		uint32_t BytesPerRow = 0;
+		int32_t Height = 0;
+		uint64_t BufferSize = 0;
+		std::function<void(std::vector<uint8_t>)> Callback;
+	};
+
+	auto* texture = static_cast<TextureWebGPU*>(renderTarget);
+	if (texture == nullptr || !callback)
+	{
+		if (callback)
+		{
+			callback({});
+		}
+		return;
+	}
+
+	const auto size = texture->GetSizeAs2D();
+	const auto bytesPerPixel = GetFormatBytesPerPixel(texture->GetFormat());
+	const auto unalignedBytesPerRow = static_cast<uint32_t>(size.X) * bytesPerPixel;
+	const auto bytesPerRow = AlignTo(unalignedBytesPerRow, 256);
+	const auto bufferSize = static_cast<uint64_t>(bytesPerRow) * static_cast<uint32_t>(size.Y);
+
+	wgpu::BufferDescriptor bufferDesc{};
+	bufferDesc.size = bufferSize;
+	bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+	auto state = std::make_shared<ReadbackState>();
+	state->Buffer = device_.CreateBuffer(&bufferDesc);
+	state->UnalignedBytesPerRow = unalignedBytesPerRow;
+	state->BytesPerRow = bytesPerRow;
+	state->Height = size.Y;
+	state->BufferSize = bufferSize;
+	state->Callback = std::move(callback);
+
+	auto encoder = device_.CreateCommandEncoder();
+	wgpu::TexelCopyTextureInfo src{};
+	src.texture = texture->GetTexture();
+	src.aspect = wgpu::TextureAspect::All;
+	wgpu::TexelCopyBufferInfo dst{};
+	dst.buffer = state->Buffer;
+	dst.layout.bytesPerRow = bytesPerRow;
+	dst.layout.rowsPerImage = static_cast<uint32_t>(size.Y);
+	wgpu::Extent3D extent{};
+	extent.width = static_cast<uint32_t>(size.X);
+	extent.height = static_cast<uint32_t>(size.Y);
+	extent.depthOrArrayLayers = 1;
+	encoder.CopyTextureToBuffer(&src, &dst, &extent);
+	auto commandBuffer = encoder.Finish();
+	queue_.Submit(1, &commandBuffer);
+
+	state->Buffer.MapAsync(
+		wgpu::MapMode::Read,
+		0,
+		bufferSize,
+		wgpu::CallbackMode::AllowSpontaneous,
+		[state](wgpu::MapAsyncStatus status, wgpu::StringView) {
+			std::vector<uint8_t> result;
+			if (status == wgpu::MapAsyncStatus::Success)
+			{
+				result.resize(static_cast<size_t>(state->UnalignedBytesPerRow) * static_cast<size_t>(state->Height));
+				auto mapped = static_cast<const uint8_t*>(state->Buffer.GetConstMappedRange(0, state->BufferSize));
+				for (int32_t y = 0; y < state->Height; y++)
+				{
+					memcpy(result.data() + static_cast<size_t>(y) * state->UnalignedBytesPerRow,
+						   mapped + static_cast<size_t>(y) * state->BytesPerRow,
+						   state->UnalignedBytesPerRow);
+				}
+				state->Buffer.Unmap();
+			}
+			state->Callback(std::move(result));
+		});
 }
 
 RenderPassPipelineState* GraphicsWebGPU::CreateRenderPassPipelineState(RenderPass* renderPass)

@@ -56,6 +56,8 @@ public:
 
 	std::vector<uint8_t> CaptureRenderTarget(Texture* renderTarget) override;
 
+	void CaptureRenderTargetAsync(Texture* renderTarget, std::function<void(std::vector<uint8_t>)> callback) override;
+
 	bool GetIsMipmapGenerationSupportedOnTextureLoad() const override { return true; }
 
 	RenderPassPipelineState* CreateRenderPassPipelineState(RenderPass* renderPass) override;
