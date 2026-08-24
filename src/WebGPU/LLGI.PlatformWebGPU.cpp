@@ -283,6 +283,29 @@ bool PlatformWebGPU::Initialize(wgpu::Device device, bool waitVSync, bool isPrem
 	return device_ != nullptr;
 }
 
+bool PlatformWebGPU::Initialize(wgpu::Instance instance,
+								wgpu::Adapter adapter,
+								wgpu::Device device,
+								wgpu::Surface surface,
+								const Vec2I& surfaceSize,
+								bool waitVSync,
+								bool isPremultipliedAlphaEnabled)
+{
+	if (instance == nullptr || adapter == nullptr || device == nullptr || surface == nullptr)
+	{
+		Log(LogType::Error, "External WebGPU initialization requires an instance, adapter, device, and surface.");
+		return false;
+	}
+
+	instance_ = instance;
+	adapter_ = adapter;
+	device_ = device;
+	surface_ = surface;
+	waitVSync_ = waitVSync;
+	isPremultipliedAlphaEnabled_ = isPremultipliedAlphaEnabled;
+	return ConfigureSurface(surfaceSize);
+}
+
 void PlatformWebGPU::SetPremultipliedAlphaEnabled(bool isPremultipliedAlphaEnabled)
 {
 	if (isPremultipliedAlphaEnabled_ == isPremultipliedAlphaEnabled)

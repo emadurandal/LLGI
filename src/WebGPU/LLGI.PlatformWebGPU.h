@@ -38,6 +38,13 @@ public:
 
 	bool Initialize(Window* window, bool waitVSync, bool isPremultipliedAlphaEnabled = false);
 	bool Initialize(wgpu::Device device, bool waitVSync, bool isPremultipliedAlphaEnabled = false);
+	bool Initialize(wgpu::Instance instance,
+					wgpu::Adapter adapter,
+					wgpu::Device device,
+					wgpu::Surface surface,
+					const Vec2I& surfaceSize,
+					bool waitVSync,
+					bool isPremultipliedAlphaEnabled = false);
 	void SetPremultipliedAlphaEnabled(bool isPremultipliedAlphaEnabled);
 
 	int GetCurrentFrameIndex() const override;
