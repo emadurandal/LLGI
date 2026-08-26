@@ -126,7 +126,14 @@ bool PlatformWebGPU::ConfigureSurface(const Vec2I& windowSize)
 	config.height = static_cast<uint32_t>(windowSize.Y);
 	config.presentMode = presentMode_;
 	config.alphaMode = alphaMode;
+#if defined(__EMSCRIPTEN__)
+	// Browser swap-chain textures are presentation resources. Chromium GPU
+	// backends do not consistently support CopySrc/CopyDst on the canvas
+	// SharedImage, so browser readback must use an offscreen render target.
+	config.usage = wgpu::TextureUsage::RenderAttachment;
+#else
 	config.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
+#endif
 	surface_.Configure(&config);
 
 	windowSize_ = windowSize;

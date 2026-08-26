@@ -463,19 +463,39 @@ void GraphicsWebGPU::CaptureRenderTargetAsync(Texture* renderTarget, std::functi
 		0,
 		bufferSize,
 		wgpu::CallbackMode::AllowSpontaneous,
-		[state](wgpu::MapAsyncStatus status, wgpu::StringView) {
+		[state](wgpu::MapAsyncStatus status, wgpu::StringView message) {
 			std::vector<uint8_t> result;
 			if (status == wgpu::MapAsyncStatus::Success)
 			{
 				result.resize(static_cast<size_t>(state->UnalignedBytesPerRow) * static_cast<size_t>(state->Height));
 				auto mapped = static_cast<const uint8_t*>(state->Buffer.GetConstMappedRange(0, state->BufferSize));
-				for (int32_t y = 0; y < state->Height; y++)
+				if (mapped == nullptr)
+				{
+#if defined(__EMSCRIPTEN__)
+					emscripten_log(EM_LOG_ERROR, "LLGI WebGPU async readback returned no mapped range.");
+#endif
+					result.clear();
+				}
+				for (int32_t y = 0; mapped != nullptr && y < state->Height; y++)
 				{
 					memcpy(result.data() + static_cast<size_t>(y) * state->UnalignedBytesPerRow,
 						   mapped + static_cast<size_t>(y) * state->BytesPerRow,
 						   state->UnalignedBytesPerRow);
 				}
-				state->Buffer.Unmap();
+				if (mapped != nullptr)
+				{
+					state->Buffer.Unmap();
+				}
+			}
+			else
+			{
+#if defined(__EMSCRIPTEN__)
+				emscripten_log(EM_LOG_ERROR,
+						   "LLGI WebGPU async readback MapAsync failed: status=%d message=%.*s",
+						   static_cast<int>(status),
+						   static_cast<int>(message.length),
+						   message.data != nullptr ? message.data : "");
+#endif
 			}
 			state->Callback(std::move(result));
 		});
