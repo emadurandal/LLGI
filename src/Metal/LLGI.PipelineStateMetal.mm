@@ -25,7 +25,7 @@ bool LogMetalError(NSError* error)
 bool PipelineStateMetal::Compile(PipelineState* self, Graphics* graphics)
 {
 	auto pipstate = static_cast<PipelineStateMetal*>(self);
-	if(pipstate->GetShaders()[static_cast<int>(ShaderStageType::Compute)])
+	if (pipstate->GetShaders()[static_cast<int>(ShaderStageType::Compute)])
 	{
 		return CreateComputePipelineState(self, graphics);
 	}
@@ -105,8 +105,7 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 
 		vertexDescriptor.layouts[VertexBufferIndex].stepRate = 1;
 		vertexDescriptor.layouts[VertexBufferIndex].stepFunction = MTLVertexStepFunctionPerVertex;
-		vertexDescriptor.layouts[VertexBufferIndex].stride =
-			pipstate->VertexBufferStride > 0 ? pipstate->VertexBufferStride : vertexOffset;
+		vertexDescriptor.layouts[VertexBufferIndex].stride = pipstate->VertexBufferStride > 0 ? pipstate->VertexBufferStride : vertexOffset;
 
 		pipelineStateDescriptor_.vertexDescriptor = vertexDescriptor;
 
@@ -165,7 +164,7 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 					stencilOps[static_cast<int>(StencilOperatorType::Replace)] = MTLStencilOperationReplace;
 					stencilOps[static_cast<int>(StencilOperatorType::IncClamp)] = MTLStencilOperationIncrementClamp;
 					stencilOps[static_cast<int>(StencilOperatorType::DecClamp)] = MTLStencilOperationDecrementClamp;
-					stencilOps[static_cast<int>(StencilOperatorType::Invert)] = MTLStencilOperationDecrementClamp;
+					stencilOps[static_cast<int>(StencilOperatorType::Invert)] = MTLStencilOperationInvert;
 					stencilOps[static_cast<int>(StencilOperatorType::IncRepeat)] = MTLStencilOperationIncrementWrap;
 					stencilOps[static_cast<int>(StencilOperatorType::DecRepeat)] = MTLStencilOperationDecrementWrap;
 
@@ -408,4 +407,4 @@ void PipelineStateMetal::SetShader(ShaderStageType stage, Shader* shader)
 
 bool PipelineStateMetal::Compile() { return Compile(this, graphics_); }
 
-}
+} // namespace LLGI

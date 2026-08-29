@@ -15,13 +15,13 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 	const bool isRenderTarget = (parameter.Usage & TextureUsageType::RenderTarget) != TextureUsageType::NoneFlag;
 
 	type_ = TextureType::Color;
-    
-    MTLTextureUsage usage = MTLTextureUsageUnknown;
-    
-    if(BitwiseContains(parameter.Usage, TextureUsageType::Storage))
-    {
-        usage |= (MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite);
-    }
+
+	MTLTextureUsage usage = MTLTextureUsageUnknown;
+
+	if (BitwiseContains(parameter.Usage, TextureUsageType::Storage))
+	{
+		usage |= (MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite);
+	}
 
 	if (IsDepthFormat(parameter.Format))
 	{
@@ -139,26 +139,33 @@ void TextureMetal::Write(const uint8_t* data)
 	}
 
 	const auto format = ConvertFormat(texture_.pixelFormat);
+	const bool isArray = BitwiseContains(parameter_.Usage, TextureUsageType::Array);
 	size_t offset = 0;
 	for (int32_t mipLevel = 0; mipLevel < mipmapCount_; mipLevel++)
 	{
-		auto mipSize = GetTextureMipSize(size_, mipLevel);
-		MTLRegion region = {
-			{0, 0, 0},
-			{static_cast<uint32_t>(mipSize.X), static_cast<uint32_t>(mipSize.Y), static_cast<uint32_t>(mipSize.Z)}};
+		auto mipSize = GetTextureMipSize(size_, mipLevel, isArray);
+		auto imageSize = mipSize;
+		if (isArray)
+		{
+			imageSize.Z = 1;
+		}
+		MTLRegion region = {{0, 0, 0},
+							{static_cast<uint32_t>(imageSize.X), static_cast<uint32_t>(imageSize.Y), static_cast<uint32_t>(imageSize.Z)}};
 
-		auto all_size = GetTextureMemorySize(format, mipSize);
-		auto bytes_per_row = GetTextureRowPitch(format, mipSize);
-		auto bytes_per_image = all_size / mipSize.Z;
+		auto bytes_per_row = GetTextureRowPitch(format, imageSize);
+		auto bytes_per_image = GetTextureMemorySize(format, imageSize);
+		const int32_t sliceCount = isArray ? mipSize.Z : 1;
 
-		[texture_ replaceRegion:region
-					mipmapLevel:mipLevel
-						  slice:0
-					  withBytes:data + offset
-					bytesPerRow:bytes_per_row
-				  bytesPerImage:bytes_per_image];
-
-		offset += all_size;
+		for (int32_t slice = 0; slice < sliceCount; slice++)
+		{
+			[texture_ replaceRegion:region
+						mipmapLevel:mipLevel
+							  slice:slice
+						  withBytes:data + offset
+						bytesPerRow:bytes_per_row
+					  bytesPerImage:bytes_per_image];
+			offset += bytes_per_image;
+		}
 	}
 }
 
@@ -187,9 +194,10 @@ bool TextureMetal::Initialize(GraphicsMetal* owner, const TextureParameter& para
 	}
 
 	format_ = ConvertFormat(texture_.pixelFormat);
-    usage_ = parameter.Usage;
+	usage_ = parameter.Usage;
 	parameter_ = parameter;
-	data_.resize(GetTextureMemorySize(format_, parameter.Size, mipmapCount_, (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag));
+	data_.resize(GetTextureMemorySize(
+		format_, parameter.Size, mipmapCount_, (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag));
 	return true;
 }
 
@@ -258,8 +266,7 @@ void TextureMetal::GenerateMipmapsOnLoad()
 	// GraphicsMetal advertises load-time mipmap generation support, so loaded textures
 	// must generate their mip levels before delayed command queues can sample them.
 	const bool canGenerate = parameter_.IsMipmapGenerationEnabled && parameter_.MipLevelCount > 1 &&
-							 !IsBlockCompressedFormat(parameter_.Format) &&
-							 !BitwiseContains(parameter_.Usage, TextureUsageType::Array);
+							 !IsBlockCompressedFormat(parameter_.Format) && !BitwiseContains(parameter_.Usage, TextureUsageType::Array);
 	if (!canGenerate || owner_ == nullptr)
 	{
 		return;
@@ -280,7 +287,7 @@ bool TextureMetal::GetData(std::vector<uint8_t>& data)
 	MTLRegion region = {{0, 0, 0}, {static_cast<uint32_t>(size_.X), static_cast<uint32_t>(size_.Y), static_cast<uint32_t>(size_.Z)}};
 
 	auto all_size = GetTextureMemorySize(ConvertFormat(texture_.pixelFormat), size_);
-    auto bytes_per_row = all_size / size_.Y / size_.Z;
+	auto bytes_per_row = all_size / size_.Y / size_.Z;
 	auto bytes_per_image = all_size / size_.Z;
 
 	data.resize(all_size);
@@ -292,4 +299,4 @@ bool TextureMetal::GetData(std::vector<uint8_t>& data)
 
 Vec2I TextureMetal::GetSizeAs2D() const { return Vec2I{size_.X, size_.Y}; }
 
-}
+} // namespace LLGI

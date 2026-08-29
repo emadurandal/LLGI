@@ -48,11 +48,16 @@ Module.preRun.push(function() {
 			message: error && error.message ? error.message : String(error)
 		};
 		console.error('LLGI_TEST_FAIL', Module.llgiTestResult.message);
-		removeRunDependency(dependency);
+		// Keep the dependency pending so the native test entry point cannot run
+		// without a WebGPU device and replace this diagnostic with an assertion.
 	});
 });
 
 Module.onAbort = function(reason) {
+	if (Module.llgiTestResult && Module.llgiTestResult.status === 'failed') {
+		return;
+	}
+
 	Module.llgiTestResult = {
 		status: 'failed',
 		message: reason ? String(reason) : 'aborted'

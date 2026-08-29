@@ -1,13 +1,13 @@
 #include "LLGI.GraphicsMetal.h"
-#include "LLGI.CommandListMetal.h"
 #include "LLGI.BufferMetal.h"
+#include "LLGI.CommandListMetal.h"
 #include "LLGI.Metal_Impl.h"
 #include "LLGI.PipelineStateMetal.h"
+#include "LLGI.QueryMetal.h"
 #include "LLGI.RenderPassMetal.h"
 #include "LLGI.ShaderMetal.h"
 #include "LLGI.SingleFrameMemoryPoolMetal.h"
 #include "LLGI.TextureMetal.h"
-#include "LLGI.QueryMetal.h"
 #import <MetalKit/MetalKit.h>
 
 #include <TargetConditionals.h>
@@ -43,7 +43,16 @@ bool GraphicsMetal::Initialize(std::function<GraphicsView()> getGraphicsView)
 	getGraphicsView_ = getGraphicsView;
 
 	device_ = MTLCreateSystemDefaultDevice();
+	if (device_ == nil)
+	{
+		return false;
+	}
+
 	commandQueue_ = [device_ newCommandQueue];
+	if (commandQueue_ == nil)
+	{
+		return false;
+	}
 
 	maxMultiSamplingCount_ = 0;
 	int testSampleCounts[] = {8, 4, 2, 1};
@@ -57,14 +66,14 @@ bool GraphicsMetal::Initialize(std::function<GraphicsView()> getGraphicsView)
 		}
 	}
 	if (maxMultiSamplingCount_ == 0)
-		throw "Unsupported.";
+	{
+		return false;
+	}
 
 	renderPass_ = CreateSharedPtr(new RenderPassMetal());
 
 	return true;
 }
-
-void GraphicsMetal::SetWindowSize(const Vec2I& windowSize) { throw "Not inplemented"; }
 
 void GraphicsMetal::Execute(CommandList* commandList)
 {
@@ -126,14 +135,14 @@ RenderPass* GraphicsMetal::GetCurrentScreen(const Color8& clearColor, bool isCol
 
 Buffer* GraphicsMetal::CreateBuffer(BufferUsageType usage, int32_t size)
 {
-    auto obj = new BufferMetal();
-    if (obj->Initialize(this, usage, size))
-    {
-        return obj;
-    }
+	auto obj = new BufferMetal();
+	if (obj->Initialize(this, usage, size))
+	{
+		return obj;
+	}
 
-    SafeRelease(obj);
-    return nullptr;
+	SafeRelease(obj);
+	return nullptr;
 }
 
 Shader* GraphicsMetal::CreateShader(DataStructure* data, int32_t count)
@@ -236,15 +245,12 @@ Texture* GraphicsMetal::CreateRenderTexture(const RenderTextureInitializationPar
 
 Texture* GraphicsMetal::CreateDepthTexture(const DepthTextureInitializationParameter& parameter)
 {
-	if (parameter.Mode == DepthTextureMode::DepthStencil)
+	auto param = ToTextureParameter(parameter);
+	if (parameter.Mode == DepthTextureMode::DepthStencil && !GetDevice().isDepth24Stencil8PixelFormatSupported)
 	{
-		if (!GetDevice().isDepth24Stencil8PixelFormatSupported)
-		{
-			return nullptr;
-		}
+		param.Format = TextureFormatType::D32S8;
 	}
 
-	auto param = ToTextureParameter(parameter);
 	if (!ValidateTextureParameter(param, "GraphicsMetal::CreateDepthTexture", 2))
 	{
 		return nullptr;
@@ -271,6 +277,12 @@ Texture* GraphicsMetal::CreateTexture(uint64_t texid)
 
 RenderPassPipelineState* GraphicsMetal::CreateRenderPassPipelineState(RenderPass* renderPass)
 {
+	if (renderPass == nullptr)
+	{
+		Log(LogType::Error, "RenderPass is null.");
+		return nullptr;
+	}
+
 	return CreateRenderPassPipelineState(renderPass->GetKey());
 }
 
@@ -307,13 +319,25 @@ RenderPassPipelineState* GraphicsMetal::CreateRenderPassPipelineState(const Rend
 
 std::vector<uint8_t> GraphicsMetal::CaptureRenderTarget(Texture* renderTarget)
 {
+	if (renderTarget == nullptr)
+	{
+		return {};
+	}
+
 	auto metalTexture = static_cast<TextureMetal*>(renderTarget);
 	auto width = metalTexture->GetSizeAs2D().X;
 	auto height = metalTexture->GetSizeAs2D().Y;
 	auto& texture = metalTexture->GetTexture();
+	if (width <= 0 || height <= 0 || texture == nil || commandQueue_ == nil)
+	{
+		return {};
+	}
 
-	id<MTLCommandQueue> queue = [this->device_ newCommandQueue];
-	id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
+	id<MTLCommandBuffer> commandBuffer = [commandQueue_ commandBuffer];
+	if (commandBuffer == nil)
+	{
+		return {};
+	}
 	id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
 
 #if !(TARGET_OS_IPHONE) && !(TARGET_OS_SIMULATOR)
@@ -350,13 +374,10 @@ Query* GraphicsMetal::CreateQuery(QueryType queryType, int32_t queryCount)
 	return obj;
 }
 
-uint64_t GraphicsMetal::TimestampToMicroseconds(uint64_t timestamp) const
-{
-	return static_cast<uint64_t>(timestamp / 1000);
-}
+uint64_t GraphicsMetal::TimestampToMicroseconds(uint64_t timestamp) const { return static_cast<uint64_t>(timestamp / 1000); }
 
 id<MTLDevice>& GraphicsMetal::GetDevice() { return device_; }
 
 id<MTLCommandQueue>& GraphicsMetal::GetCommandQueue() { return commandQueue_; }
 
-}
+} // namespace LLGI

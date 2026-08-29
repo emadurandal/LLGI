@@ -37,6 +37,15 @@ void RenderPassWebGPU::RefreshDescriptor()
 			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
 			depthStencilAttachiment_.depthClearValue = 1.0f;
 		}
+
+		auto depthTexture = GetDepthTexture();
+		if (depthTexture != nullptr &&
+			(depthTexture->GetFormat() == TextureFormatType::D24S8 || depthTexture->GetFormat() == TextureFormatType::D32S8))
+		{
+			depthStencilAttachiment_.stencilLoadOp = GetIsDepthCleared() ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load;
+			depthStencilAttachiment_.stencilStoreOp = wgpu::StoreOp::Store;
+			depthStencilAttachiment_.stencilClearValue = 0;
+		}
 	}
 }
 

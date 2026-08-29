@@ -21,11 +21,10 @@ struct PlatformMetal_Impl
 	Window* window_;
 	bool waitVSync_;
 
-	id<MTLDevice> device;
-	id<MTLCommandQueue> commandQueue;
-	CAMetalLayer* layer;
+	id<MTLDevice> device = nullptr;
+	id<MTLCommandQueue> commandQueue = nullptr;
+	CAMetalLayer* layer = nullptr;
 	id<CAMetalDrawable> drawable = nullptr;
-	NSAutoreleasePool* pool;
 
 	PlatformMetal_Impl(Window* window, bool waitVSync) : window_(window), waitVSync_(waitVSync)
 	{
@@ -40,15 +39,24 @@ struct PlatformMetal_Impl
 
 	~PlatformMetal_Impl()
 	{
-		if (layer != nullptr)
-		{
-			[layer release];
-			layer = nullptr;
-		}
-
 		if (drawable != nullptr)
 		{
 			[drawable release];
+			drawable = nullptr;
+		}
+
+		resetLayer();
+
+		if (commandQueue != nullptr)
+		{
+			[commandQueue release];
+			commandQueue = nullptr;
+		}
+
+		if (device != nullptr)
+		{
+			[device release];
+			device = nullptr;
 		}
 	}
 
@@ -69,11 +77,16 @@ struct PlatformMetal_Impl
 			drawable = layer.nextDrawable;
 			[drawable retain];
 		}
-		return true;
+		return drawable != nullptr;
 	}
 
 	void preset()
 	{
+		if (drawable == nullptr || commandQueue == nullptr)
+		{
+			return;
+		}
+
 		@autoreleasepool
 		{
 			id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
@@ -96,7 +109,14 @@ struct PlatformMetal_Impl
 		NSWindow* nswindow = (NSWindow*)window_->GetNativePtr(0);
 		auto frameBufferSize = window_->GetFrameBufferSize();
 
-		layer = [CAMetalLayer layer];
+		if (drawable != nullptr)
+		{
+			[drawable release];
+			drawable = nullptr;
+		}
+
+		resetLayer();
+		layer = [[CAMetalLayer alloc] init];
 		layer.device = device;
 		layer.displaySyncEnabled = waitVSync_;
 		layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
@@ -119,11 +139,30 @@ PlatformMetal::PlatformMetal(Window* window, bool waitVSync)
 	}
 
 	windowSize_ = window->GetWindowSize();
+	frameBufferSize_ = window->GetFrameBufferSize();
 }
 
 PlatformMetal::~PlatformMetal() { delete impl; }
 
-bool PlatformMetal::NewFrame() { return impl->newFrame(); }
+bool PlatformMetal::NewFrame()
+{
+	const auto windowSize = impl->window_->GetWindowSize();
+	const auto frameBufferSize = impl->window_->GetFrameBufferSize();
+	if (windowSize != windowSize_ || frameBufferSize != frameBufferSize_)
+	{
+		windowSize_ = windowSize;
+		frameBufferSize_ = frameBufferSize;
+		impl->generateLayer();
+	}
+
+	if (!impl->newFrame())
+	{
+		return false;
+	}
+
+	ringIndex_ = (ringIndex_ + 1) % static_cast<int32_t>(ringBuffers_.size());
+	return true;
+}
 
 void PlatformMetal::Present() { impl->preset(); }
 
@@ -149,6 +188,11 @@ Graphics* PlatformMetal::CreateGraphics()
 
 RenderPass* PlatformMetal::GetCurrentScreen(const Color8& clearColor, bool isColorCleared, bool isDepthCleared)
 {
+	if (impl->drawable == nullptr)
+	{
+		return nullptr;
+	}
+
 	// delay init
 	ringBuffers_[ringIndex_].renderTexture->Reset(this->impl->drawable.texture);
 	auto texPtr = ringBuffers_[ringIndex_].renderTexture.get();
@@ -168,10 +212,11 @@ void PlatformMetal::SetWindowSize(const Vec2I& windowSize)
 	}
 
 	windowSize_ = windowSize;
+	frameBufferSize_ = impl->window_->GetFrameBufferSize();
 
 	impl->generateLayer();
 }
 
-}
+} // namespace LLGI
 
 #endif

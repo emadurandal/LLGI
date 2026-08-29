@@ -1,8 +1,10 @@
 #include "LLGI.TextureWebGPU.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -15,12 +17,15 @@ namespace LLGI
 
 namespace
 {
+struct AsyncWaitState
+{
+	std::atomic<bool> Completed{false};
+	std::atomic<bool> Succeeded{false};
+};
+
 constexpr uint32_t TextureBytesPerRowAlignment = 256;
 
-uint32_t AlignTo(uint32_t value, uint32_t alignment)
-{
-	return (value + alignment - 1) / alignment * alignment;
-}
+uint32_t AlignTo(uint32_t value, uint32_t alignment) { return (value + alignment - 1) / alignment * alignment; }
 
 const char* MipmapShaderWGSL = R"(
 struct VSOutput {
@@ -62,13 +67,8 @@ struct MipmapSize
 
 bool CanGenerateMipMaps(const TextureParameter& parameter)
 {
-	return parameter.IsMipmapGenerationEnabled &&
-		   parameter.MipLevelCount > 1 &&
-		   parameter.Dimension == 2 &&
-		   parameter.Size.Z == 1 &&
-		   !IsBlockCompressedFormat(parameter.Format) &&
-		   !IsDepthFormat(parameter.Format) &&
-		   parameter.SampleCount == 1;
+	return parameter.IsMipmapGenerationEnabled && parameter.MipLevelCount > 1 && parameter.Dimension == 2 && parameter.Size.Z == 1 &&
+		   !IsBlockCompressedFormat(parameter.Format) && !IsDepthFormat(parameter.Format) && parameter.SampleCount == 1;
 }
 
 MipmapSize GetMipmapSize(const TextureParameter& parameter, uint32_t mipLevel)
@@ -100,15 +100,9 @@ struct TextureUploadData
 	size_t SourceSize = 0;
 	std::vector<uint8_t> AlignedData;
 
-	const uint8_t* Data() const
-	{
-		return AlignedData.empty() ? Source : AlignedData.data();
-	}
+	const uint8_t* Data() const { return AlignedData.empty() ? Source : AlignedData.data(); }
 
-	size_t Size() const
-	{
-		return AlignedData.empty() ? SourceSize : AlignedData.size();
-	}
+	size_t Size() const { return AlignedData.empty() ? SourceSize : AlignedData.size(); }
 };
 
 TextureUploadData CreateTextureUploadData(const uint8_t* src, uint32_t rowPitch, uint32_t rowCount, uint32_t alignedRowPitch)
@@ -125,21 +119,15 @@ TextureUploadData CreateTextureUploadData(const uint8_t* src, uint32_t rowPitch,
 	uploadData.AlignedData.resize(static_cast<size_t>(alignedRowPitch) * rowCount);
 	for (uint32_t row = 0; row < rowCount; row++)
 	{
-		memcpy(
-			uploadData.AlignedData.data() + static_cast<size_t>(alignedRowPitch) * row,
-			src + static_cast<size_t>(rowPitch) * row,
-			rowPitch);
+		memcpy(uploadData.AlignedData.data() + static_cast<size_t>(alignedRowPitch) * row,
+			   src + static_cast<size_t>(rowPitch) * row,
+			   rowPitch);
 	}
 	return uploadData;
 }
 
 void WriteTextureMipLevel(
-	wgpu::Device& device,
-	wgpu::Texture texture,
-	TextureFormatType format,
-	uint32_t mipLevel,
-	Vec3I size,
-	const uint8_t* data)
+	wgpu::Device& device, wgpu::Texture texture, TextureFormatType format, uint32_t mipLevel, Vec3I size, const uint8_t* data)
 {
 	const auto rowPitch = static_cast<uint32_t>(GetTextureRowPitch(format, size));
 	const auto rowCount = static_cast<uint32_t>(GetTextureRowCount(format, size));
@@ -404,7 +392,8 @@ bool TextureWebGPU::Initialize(wgpu::Device& device, const TextureParameter& par
 
 		wgpu::TextureViewDescriptor texViewDesc{};
 		texViewDesc.format = texDesc.format;
-		texViewDesc.dimension = isArray && parameter.Dimension == 2 ? wgpu::TextureViewDimension::e2DArray : getViewDimension(parameter.Dimension);
+		texViewDesc.dimension =
+			isArray && parameter.Dimension == 2 ? wgpu::TextureViewDimension::e2DArray : getViewDimension(parameter.Dimension);
 		texViewDesc.baseMipLevel = 0;
 		texViewDesc.mipLevelCount = texDesc.mipLevelCount;
 		texViewDesc.baseArrayLayer = 0;
@@ -601,8 +590,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 	auto commandBuffer = encoder.Finish();
 	device_.GetQueue().Submit(1, &commandBuffer);
 
-	bool completed = false;
-	bool succeeded = false;
+	auto state = std::make_shared<AsyncWaitState>();
 	auto future = readbackBuffer.MapAsync(wgpu::MapMode::Read,
 										  0,
 										  bufferSize,
@@ -611,9 +599,10 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 #else
 										  instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
 #endif
-										  [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
-											  succeeded = status == wgpu::MapAsyncStatus::Success;
-											  completed = true;
+										  [state](wgpu::MapAsyncStatus status, wgpu::StringView)
+										  {
+											  state->Succeeded.store(status == wgpu::MapAsyncStatus::Success, std::memory_order_relaxed);
+											  state->Completed.store(true, std::memory_order_release);
 										  });
 
 	if (instance_ != nullptr)
@@ -624,7 +613,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 	{
 #if defined(__EMSCRIPTEN__)
 		const double waitStart = emscripten_get_now();
-		while (!completed)
+		while (!state->Completed.load(std::memory_order_acquire))
 		{
 			emscripten_sleep(1);
 			if (emscripten_get_now() - waitStart > 5000.0)
@@ -634,7 +623,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 		}
 #else
 		const auto waitStart = std::chrono::steady_clock::now();
-		while (!completed)
+		while (!state->Completed.load(std::memory_order_acquire))
 		{
 			device_.Tick();
 			if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
@@ -646,7 +635,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 #endif
 	}
 
-	if (!succeeded)
+	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
 	{
 		return false;
 	}

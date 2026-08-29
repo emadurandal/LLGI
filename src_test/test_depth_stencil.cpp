@@ -9,6 +9,7 @@ enum class DepthStencilTestMode
 {
 	Depth,
 	Stencil,
+	StencilInvert,
 	DepthAsTexture,
 };
 
@@ -124,7 +125,7 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 			LLGI::DepthTextureInitializationParameter depthParam;
 			depthParam.Size = screenRenderPass->GetRenderTexture(0)->GetSizeAs2D();
 
-			if (mode == DepthStencilTestMode::Stencil)
+			if (mode == DepthStencilTestMode::Stencil || mode == DepthStencilTestMode::StencilInvert)
 			{
 				depthParam.Mode = LLGI::DepthTextureMode::DepthStencil;
 			}
@@ -162,12 +163,14 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 				writepip->IsDepthWriteEnabled = true;
 			}
 
-			if (mode == DepthStencilTestMode::Stencil)
+			if (mode == DepthStencilTestMode::Stencil || mode == DepthStencilTestMode::StencilInvert)
 			{
 				writepip->IsStencilTestEnabled = true;
 				writepip->StencilFailOp = LLGI::StencilOperatorType::Keep;
-				writepip->StencilDepthFailOp = LLGI::StencilOperatorType::Replace;
-				writepip->StencilPassOp = LLGI::StencilOperatorType::Replace;
+				writepip->StencilDepthFailOp = mode == DepthStencilTestMode::StencilInvert ? LLGI::StencilOperatorType::Invert
+																					  : LLGI::StencilOperatorType::Replace;
+				writepip->StencilPassOp = mode == DepthStencilTestMode::StencilInvert ? LLGI::StencilOperatorType::Invert
+																			  : LLGI::StencilOperatorType::Replace;
 				writepip->StencilCompareFunc = LLGI::CompareFuncType::Always;
 			}
 
@@ -193,14 +196,15 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 				testpip->DepthFunc = LLGI::DepthFuncType::Always;
 			}
 
-			if (mode == DepthStencilTestMode::Stencil)
+			if (mode == DepthStencilTestMode::Stencil || mode == DepthStencilTestMode::StencilInvert)
 			{
 				testpip->IsStencilTestEnabled = true;
-				testpip->StencilRef = 0x7f;
+				testpip->StencilRef = mode == DepthStencilTestMode::StencilInvert ? 0xff : 0x7f;
 				testpip->StencilFailOp = LLGI::StencilOperatorType::Keep;
 				testpip->StencilDepthFailOp = LLGI::StencilOperatorType::Keep;
 				testpip->StencilPassOp = LLGI::StencilOperatorType::Keep;
-				testpip->StencilCompareFunc = LLGI::CompareFuncType::Greater;
+				testpip->StencilCompareFunc = mode == DepthStencilTestMode::StencilInvert ? LLGI::CompareFuncType::Equal
+																					  : LLGI::CompareFuncType::Greater;
 				testpip->StencilReadMask = 0xff;
 				testpip->StencilWriteMask = 0xff;
 			}
@@ -291,6 +295,18 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
 					.Save("DepthStencil.Stencil_" + TestHelper::GetDeviceName(deviceType) + ".png");
 			}
+			else if (mode == DepthStencilTestMode::StencilInvert)
+			{
+				const auto offscreenData = graphics->CaptureRenderTarget(colorBuffer.get());
+				const auto centerOffset =
+					static_cast<size_t>((colorBuffer->GetSizeAs2D().X / 2) +
+										(colorBuffer->GetSizeAs2D().Y / 2) * colorBuffer->GetSizeAs2D().X) *
+					4;
+				VERIFY(centerOffset + 3 < offscreenData.size());
+				VERIFY(offscreenData[centerOffset + 2] > offscreenData[centerOffset + 1]);
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
+					.Save("DepthStencil.StencilInvert_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			}
 			else if (mode == DepthStencilTestMode::DepthAsTexture)
 			{
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
@@ -314,6 +330,10 @@ TestRegister DepthStencil_Depth("DepthStencil.Depth",
 
 TestRegister DepthStencil_Stencil("DepthStencil.Stencil",
 								  [](LLGI::DeviceType device) -> void { test_depth_stencil(device, DepthStencilTestMode::Stencil); });
+
+TestRegister DepthStencil_StencilInvert(
+	"DepthStencil.StencilInvert",
+	[](LLGI::DeviceType device) -> void { test_depth_stencil(device, DepthStencilTestMode::StencilInvert); });
 
 TestRegister DepthStencil_DepthAsTexture("DepthStencil.DepthAsTexture", [](LLGI::DeviceType device) -> void {
 	test_depth_stencil(device, DepthStencilTestMode::DepthAsTexture);

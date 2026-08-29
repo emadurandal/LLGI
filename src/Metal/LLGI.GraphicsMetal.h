@@ -39,8 +39,6 @@ public:
 
 	bool Initialize(std::function<GraphicsView()> getGraphicsView);
 
-	void SetWindowSize(const Vec2I& windowSize) override;
-
 	void Execute(CommandList* commandList) override;
 
 	void WaitFinish() override;

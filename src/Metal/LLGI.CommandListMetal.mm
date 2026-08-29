@@ -3,9 +3,9 @@
 #include "LLGI.GraphicsMetal.h"
 #include "LLGI.Metal_Impl.h"
 #include "LLGI.PipelineStateMetal.h"
+#include "LLGI.QueryMetal.h"
 #include "LLGI.RenderPassMetal.h"
 #include "LLGI.TextureMetal.h"
-#include "LLGI.QueryMetal.h"
 
 #import <MetalKit/MetalKit.h>
 #include <TargetConditionals.h>
@@ -20,9 +20,9 @@ static constexpr uint32_t InitialVisibilityResultBufferCount = 1024;
 id<MTLTexture> CreateFallbackSampledTexture(id<MTLDevice> device)
 {
 	MTLTextureDescriptor* textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-																								  width:1
-																								 height:1
-																							  mipmapped:NO];
+																								 width:1
+																								height:1
+																							 mipmapped:NO];
 	textureDescriptor.usage = MTLTextureUsageShaderRead;
 
 	auto texture = [device newTextureWithDescriptor:textureDescriptor];
@@ -36,7 +36,7 @@ id<MTLTexture> CreateFallbackSampledTexture(id<MTLDevice> device)
 	[texture replaceRegion:region mipmapLevel:0 withBytes:textureData bytesPerRow:4];
 	return texture;
 }
-}
+} // namespace
 
 bool CommandListMetal::EnsureVisibilityResultBuffer(uint32_t queryCount)
 {
@@ -53,7 +53,7 @@ bool CommandListMetal::EnsureVisibilityResultBuffer(uint32_t queryCount)
 	}
 
 	visibilityResultBuffer_ = [graphics_->GetDevice() newBufferWithLength:sizeof(uint64_t) * queryCount
-																   options:MTLResourceStorageModeShared];
+																  options:MTLResourceStorageModeShared];
 	if (visibilityResultBuffer_ == nil)
 	{
 		return false;
@@ -180,7 +180,7 @@ void CommandListMetal::Begin()
 		auto t = this;
 
 		[commandBuffer_ addCompletedHandler:^(id buffer) {
-		  t->isCompleted_ = true;
+		  t->isCompleted_.store(true, std::memory_order_release);
 		}];
 
 		CommandList::Begin();
@@ -253,50 +253,50 @@ void CommandListMetal::Draw(int32_t primitiveCount, int32_t instanceCount)
 	}
 
 	// assign constant buffers
-    for(size_t i = 0; i < constantBuffers_.size(); i++)
-    {
-        auto cb = static_cast<BufferMetal*>(constantBuffers_[i]);
-        if(cb != nullptr)
-        {
-            [renderEncoder_ setVertexBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
-            [renderEncoder_ setFragmentBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
-        }
-    }
-    
-    // Assign textures
-    for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
-    {
-        auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
-        auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
-        if (nativeTexture == nullptr)
-            continue;
-        auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
-        auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
-        auto pm = 0;
-        if (nativeTexture.mipmapLevelCount >= 2)
-        {
-            pm = mipmapFilter;
-        }
-        
-        [renderEncoder_ setVertexTexture:nativeTexture atIndex:unit_ind];
-        [renderEncoder_ setVertexSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
-        [renderEncoder_ setFragmentTexture:nativeTexture atIndex:unit_ind];
-        [renderEncoder_ setFragmentSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
-    }
-	
-    const int compute_offset = 10;
-    
-    for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
-    {
-        BindingStorageBuffer bcb;
-        GetCurrentStorageBuffer(unit_ind, bcb);
-        if (bcb.storageBuffer == nullptr)
-            continue;
-			
-        auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
-        [renderEncoder_ setVertexBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
-        [renderEncoder_ setFragmentBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
-    }
+	for (size_t i = 0; i < constantBuffers_.size(); i++)
+	{
+		auto cb = static_cast<BufferMetal*>(constantBuffers_[i]);
+		if (cb != nullptr)
+		{
+			[renderEncoder_ setVertexBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
+			[renderEncoder_ setFragmentBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
+		}
+	}
+
+	// Assign textures
+	for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
+	{
+		auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
+		auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
+		if (nativeTexture == nullptr)
+			continue;
+		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
+		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
+		auto pm = 0;
+		if (nativeTexture.mipmapLevelCount >= 2)
+		{
+			pm = mipmapFilter;
+		}
+
+		[renderEncoder_ setVertexTexture:nativeTexture atIndex:unit_ind];
+		[renderEncoder_ setVertexSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
+		[renderEncoder_ setFragmentTexture:nativeTexture atIndex:unit_ind];
+		[renderEncoder_ setFragmentSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
+	}
+
+	const int compute_offset = 10;
+
+	for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
+	{
+		BindingStorageBuffer bcb;
+		GetCurrentStorageBuffer(unit_ind, bcb);
+		if (bcb.storageBuffer == nullptr)
+			continue;
+
+		auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
+		[renderEncoder_ setVertexBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
+		[renderEncoder_ setFragmentBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
+	}
 
 	if (isPipDirtied)
 	{
@@ -421,12 +421,13 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 
 		for (size_t i = 0; i < rp->pixelFormats.size(); i++)
 		{
-			if (rp->isColorCleared)
+			if (rp->GetIsColorCleared())
 			{
-				auto r_ = rp->clearColor.R / 255.0;
-				auto g_ = rp->clearColor.G / 255.0;
-				auto b_ = rp->clearColor.B / 255.0;
-				auto a_ = rp->clearColor.A / 255.0;
+				const auto clearColor = rp->GetClearColor();
+				auto r_ = clearColor.R / 255.0;
+				auto g_ = clearColor.G / 255.0;
+				auto b_ = clearColor.B / 255.0;
+				auto a_ = clearColor.A / 255.0;
 
 				rpd.colorAttachments[i].loadAction = MTLLoadActionClear;
 				rpd.colorAttachments[i].clearColor = MTLClearColorMake(r_, g_, b_, a_);
@@ -437,7 +438,7 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 			}
 		}
 
-		if (rp->isDepthCleared)
+		if (rp->GetIsDepthCleared())
 		{
 			rpd.depthAttachment.loadAction = MTLLoadActionClear;
 			rpd.depthAttachment.clearDepth = 1.0;
@@ -567,7 +568,7 @@ bool CommandListMetal::BeginComputePassWithPlatformPtr(void* platformPtr)
 	auto pp = reinterpret_cast<CommandListMetalPlatformComputePassContext*>(platformPtr);
 
 	this->computeEncoder_ = pp->ComputeEncoder;
-	
+
 	if (this->computeEncoder_)
 	{
 		[this->computeEncoder_ retain];
@@ -589,7 +590,7 @@ bool CommandListMetal::EndComputePassWithPlatformPtr()
 
 void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32_t threadX, int32_t threadY, int32_t threadZ)
 {
-    const int mipmapFilter = 1;
+	const int mipmapFilter = 1;
 
 	PipelineState* bpip = nullptr;
 
@@ -613,54 +614,55 @@ void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, 
 		return;
 	}
 
-    const int compute_offset = 10;
-    
-    // assign constant buffers
-    for(size_t i = 0; i < constantBuffers_.size(); i++)
-    {
-        auto cb = static_cast<BufferMetal*>(constantBuffers_[i]);
-        if(cb != nullptr)
-        {
-            [computeEncoder_ setBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
-        }
-    }
+	const int compute_offset = 10;
+
+	// assign constant buffers
+	for (size_t i = 0; i < constantBuffers_.size(); i++)
+	{
+		auto cb = static_cast<BufferMetal*>(constantBuffers_[i]);
+		if (cb != nullptr)
+		{
+			[computeEncoder_ setBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:i];
+		}
+	}
 
 	// Assign textures
-    for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
-    {
-        auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
-        auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
-        if (nativeTexture == nullptr)
-            continue;
-        auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
-        auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
-        auto pm = 0;
-        if (nativeTexture.mipmapLevelCount >= 2)
-        {
-            pm = mipmapFilter;
-        }
-        
-        [computeEncoder_ setTexture:nativeTexture atIndex:unit_ind];
-        [computeEncoder_ setSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
-    }
+	for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
+	{
+		auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
+		auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
+		if (nativeTexture == nullptr)
+			continue;
+		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
+		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
+		auto pm = 0;
+		if (nativeTexture.mipmapLevelCount >= 2)
+		{
+			pm = mipmapFilter;
+		}
 
-    for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
-    {
-        BindingStorageBuffer bcb;
-        GetCurrentStorageBuffer(unit_ind, bcb);
-        if (bcb.storageBuffer == nullptr)
-            continue;
-        
-        auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
-        [computeEncoder_ setBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:compute_offset + unit_ind];
-    }
-    
+		[computeEncoder_ setTexture:nativeTexture atIndex:unit_ind];
+		[computeEncoder_ setSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
+	}
+
+	for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
+	{
+		BindingStorageBuffer bcb;
+		GetCurrentStorageBuffer(unit_ind, bcb);
+		if (bcb.storageBuffer == nullptr)
+			continue;
+
+		auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
+		[computeEncoder_ setBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:compute_offset + unit_ind];
+	}
+
 	if (isPipDirtied)
 	{
 		[computeEncoder_ setComputePipelineState:pip->GetComputePipelineState()];
 	}
 
-	[computeEncoder_ dispatchThreadgroups:{(uint32_t)groupX, (uint32_t)groupY, (uint32_t)groupZ} threadsPerThreadgroup:{(uint32_t)threadX, (uint32_t)threadY, (uint32_t)threadZ}];
+	[computeEncoder_ dispatchThreadgroups:{(uint32_t)groupX, (uint32_t)groupY, (uint32_t)groupZ}
+					threadsPerThreadgroup:{(uint32_t)threadX, (uint32_t)threadY, (uint32_t)threadZ}];
 
 	CommandList::Dispatch(groupX, groupY, groupZ, threadX, threadY, threadZ);
 }
@@ -686,7 +688,6 @@ void CommandListMetal::CopyBuffer(Buffer* src, Buffer* dst)
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
 }
-
 
 bool CommandListMetal::ResetQuery(Query* query)
 {
@@ -796,5 +797,4 @@ bool CommandListMetal::RecordTimestamp(Query* query, uint32_t queryIndex)
 	return false;
 }
 
-
-}
+} // namespace LLGI

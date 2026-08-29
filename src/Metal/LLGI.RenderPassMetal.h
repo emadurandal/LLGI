@@ -45,9 +45,6 @@ public:
 
 	MTLRenderPassDescriptor* GetRenderPassDescriptor() { return renderPassDescriptor_; }
 
-	Color8 clearColor;
-	bool isColorCleared;
-	bool isDepthCleared;
 	FixedSizeVector<MTLPixelFormat, RenderTargetMax> pixelFormats;
 	MTLPixelFormat depthStencilFormat = MTLPixelFormatInvalid;
 };

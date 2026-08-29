@@ -107,6 +107,20 @@ void* WindowWin::GetNativePtr(int32_t index)
 	return nullptr;
 }
 
-Vec2I WindowWin::GetWindowSize() const { return windowSize_; }
+Vec2I WindowWin::GetWindowSize() const
+{
+#ifdef _WIN32
+	if (hwnd_ != nullptr)
+	{
+		RECT rect{};
+		if (GetClientRect(hwnd_, &rect))
+		{
+			return {rect.right - rect.left, rect.bottom - rect.top};
+		}
+	}
+#endif
+
+	return windowSize_;
+}
 
 } // namespace LLGI

@@ -1,6 +1,8 @@
 #include "LLGI.BufferWebGPU.h"
 
+#include <atomic>
 #include <chrono>
+#include <memory>
 #include <thread>
 
 #if defined(__EMSCRIPTEN__)
@@ -12,14 +14,22 @@ namespace LLGI
 
 namespace
 {
-int32_t AlignTo(int32_t value, int32_t alignment)
+struct AsyncWaitState
 {
-	return (value + alignment - 1) / alignment * alignment;
-}
+	std::atomic<bool> Completed{false};
+	std::atomic<bool> Succeeded{false};
+};
+
+int32_t AlignTo(int32_t value, int32_t alignment) { return (value + alignment - 1) / alignment * alignment; }
 } // namespace
 
 bool BufferWebGPU::Initialize(wgpu::Device& device, const BufferUsageType usage, const int32_t size, wgpu::Instance instance)
 {
+	if (device == nullptr || size <= 0 || !VerifyUsage(usage))
+	{
+		return false;
+	}
+
 	device_ = device;
 	instance_ = instance;
 
@@ -71,8 +81,7 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 
 	if (BitwiseContains(usage_, BufferUsageType::MapRead))
 	{
-		bool completed = false;
-		bool succeeded = false;
+		auto state = std::make_shared<AsyncWaitState>();
 		auto future = buffer_.MapAsync(wgpu::MapMode::Read,
 									   offset,
 									   size,
@@ -81,9 +90,10 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 #else
 									   instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
 #endif
-									   [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
-										   succeeded = status == wgpu::MapAsyncStatus::Success;
-										   completed = true;
+									   [state](wgpu::MapAsyncStatus status, wgpu::StringView)
+									   {
+										   state->Succeeded.store(status == wgpu::MapAsyncStatus::Success, std::memory_order_relaxed);
+										   state->Completed.store(true, std::memory_order_release);
 									   });
 
 		if (instance_ != nullptr)
@@ -94,7 +104,7 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 		{
 #if defined(__EMSCRIPTEN__)
 			const double waitStart = emscripten_get_now();
-			while (!completed)
+			while (!state->Completed.load(std::memory_order_acquire))
 			{
 				emscripten_sleep(1);
 				if (emscripten_get_now() - waitStart > 5000.0)
@@ -104,7 +114,7 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 			}
 #else
 			const auto waitStart = std::chrono::steady_clock::now();
-			while (!completed)
+			while (!state->Completed.load(std::memory_order_acquire))
 			{
 				device_.Tick();
 				if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
@@ -116,7 +126,9 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 #endif
 		}
 
-		return succeeded ? const_cast<void*>(buffer_.GetConstMappedRange(offset, size)) : nullptr;
+		return state->Completed.load(std::memory_order_acquire) && state->Succeeded.load(std::memory_order_relaxed)
+				   ? const_cast<void*>(buffer_.GetConstMappedRange(offset, size))
+				   : nullptr;
 	}
 
 	lockedBuffer_.resize(size);

@@ -9,12 +9,18 @@ void CompilerMetal::Initialize() {}
 
 void CompilerMetal::Compile(CompilerResult& result, const char* code, ShaderStageType shaderStage)
 {
+	if (code == nullptr)
+	{
+		result.Message = "Metal shader source is null.";
+		return;
+	}
+
 	@autoreleasepool
 	{
 		// Metal doesn't support to save a library as binary file (with external tool, it can)
 		NSString* codeStr = [[[NSString alloc] initWithUTF8String:code] autorelease];
 
-		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+		id<MTLDevice> device = [MTLCreateSystemDefaultDevice() autorelease];
 
 		NSError* libraryError = nil;
 		id<MTLLibrary> lib = [[device newLibraryWithSource:codeStr options:NULL error:&libraryError] autorelease];
@@ -51,4 +57,4 @@ void CompilerMetal::Compile(CompilerResult& result, const char* code, ShaderStag
 	}
 }
 
-}
+} // namespace LLGI

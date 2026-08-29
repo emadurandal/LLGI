@@ -4,6 +4,7 @@
 #include "../LLGI.Buffer.h"
 #import <MetalKit/MetalKit.h>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -39,7 +40,7 @@ class CommandListMetal : public CommandList
 	id<MTLBuffer> visibilityResultBuffer_ = nullptr;
 	uint32_t visibilityResultBufferCount_ = 0;
 	uint32_t visibilityResultOffset_ = 0;
-	bool isCompleted_ = true;
+	std::atomic_bool isCompleted_{true};
 
 	struct PendingOcclusionQuery
 	{
@@ -88,11 +89,11 @@ public:
 
 	void Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32_t threadX, int32_t threadY, int32_t threadZ) override;
 
-	bool GetIsCompleted() { return isCompleted_; }
+	bool GetIsCompleted() const { return isCompleted_.load(std::memory_order_acquire); }
 
     void CopyBuffer(Buffer* src, Buffer* dst) override;
     
-	void ResetCompleted() { isCompleted_ = false; }
+	void ResetCompleted() { isCompleted_.store(false, std::memory_order_release); }
 
 	id<MTLCommandBuffer>& GetCommandBuffer() { return commandBuffer_; }
 	id<MTLRenderCommandEncoder>& GetRenderCommandEncorder() { return renderEncoder_; }

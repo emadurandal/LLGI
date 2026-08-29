@@ -17,6 +17,7 @@ class PlatformMetal : public Platform
 	PlatformMetal_Impl* impl = nullptr;
 
 	Vec2I windowSize_;
+	Vec2I frameBufferSize_;
 
 	struct RingBuffer
 	{

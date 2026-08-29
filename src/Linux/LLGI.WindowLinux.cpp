@@ -97,6 +97,18 @@ void* WindowLinux::GetNativePtr(int32_t index)
 	return nullptr;
 }
 
-Vec2I WindowLinux::GetWindowSize() const { return windowSize_; }
+Vec2I WindowLinux::GetWindowSize() const
+{
+	if (display_ != nullptr && !closed_)
+	{
+		XWindowAttributes attributes{};
+		if (XGetWindowAttributes(display_, window_, &attributes) != 0)
+		{
+			return {attributes.width, attributes.height};
+		}
+	}
+
+	return windowSize_;
+}
 
 } // namespace LLGI

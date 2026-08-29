@@ -1,7 +1,7 @@
 #include "LLGI.RenderPassMetal.h"
+#include "LLGI.BufferMetal.h"
 #include "LLGI.CommandListMetal.h"
 #include "LLGI.GraphicsMetal.h"
-#include "LLGI.BufferMetal.h"
 #include "LLGI.Metal_Impl.h"
 #include "LLGI.PipelineStateMetal.h"
 #include "LLGI.ShaderMetal.h"
@@ -19,6 +19,17 @@ void RenderPassMetal::UpdateTarget(TextureMetal** textures,
 								   TextureMetal* resolvedTexture,
 								   TextureMetal* resolvedDepthTexture)
 {
+	for (int32_t i = 0; i < RenderTargetMax; i++)
+	{
+		renderPassDescriptor_.colorAttachments[i].texture = nil;
+		renderPassDescriptor_.colorAttachments[i].resolveTexture = nil;
+	}
+	renderPassDescriptor_.depthAttachment.texture = nil;
+	renderPassDescriptor_.depthAttachment.resolveTexture = nil;
+	renderPassDescriptor_.stencilAttachment.texture = nil;
+	renderPassDescriptor_.stencilAttachment.resolveTexture = nil;
+	depthStencilFormat = MTLPixelFormatInvalid;
+
 	pixelFormats.resize(textureCount);
 
 	for (int i = 0; i < textureCount; i++)
@@ -153,23 +164,11 @@ bool RenderPassMetal::UpdateRenderTarget(
 	return true;
 }
 
-void RenderPassMetal::SetIsColorCleared(bool isColorCleared)
-{
-	this->isColorCleared = isColorCleared;
-	RenderPass::SetIsColorCleared(isColorCleared);
-}
+void RenderPassMetal::SetIsColorCleared(bool isColorCleared) { RenderPass::SetIsColorCleared(isColorCleared); }
 
-void RenderPassMetal::SetIsDepthCleared(bool isDepthCleared)
-{
-	this->isDepthCleared = isDepthCleared;
-	RenderPass::SetIsDepthCleared(isDepthCleared);
-}
+void RenderPassMetal::SetIsDepthCleared(bool isDepthCleared) { RenderPass::SetIsDepthCleared(isDepthCleared); }
 
-void RenderPassMetal::SetClearColor(const Color8& color)
-{
-	this->clearColor = color;
-	RenderPass::SetClearColor(color);
-}
+void RenderPassMetal::SetClearColor(const Color8& color) { RenderPass::SetClearColor(color); }
 
 RenderPassPipelineStateMetal::RenderPassPipelineStateMetal() {}
 
@@ -186,4 +185,4 @@ void RenderPassPipelineStateMetal::SetKey(const RenderPassPipelineStateKey& key)
 	depthStencilFormat_ = ConvertFormat(key.DepthFormat);
 }
 
-}
+} // namespace LLGI

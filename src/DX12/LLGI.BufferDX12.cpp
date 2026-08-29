@@ -14,7 +14,7 @@ BufferDX12::~BufferDX12() { SafeRelease(buffer_); }
 
 bool BufferDX12::Initialize(GraphicsDX12* graphics, const BufferUsageType usage, const int32_t size)
 {
-	if (!VerifyUsage(usage))
+	if (size <= 0 || !VerifyUsage(usage))
 	{
 		return false;
 	}
@@ -135,8 +135,7 @@ int32_t BufferDX12::GetOffset() const { return offset_; }
 
 bool BufferDX12::ResourceBarrier(ID3D12GraphicsCommandList* commandList, D3D12_RESOURCE_STATES state)
 {
-	if (commandList == nullptr || state_ == state ||
-		(state != D3D12_RESOURCE_STATE_COMMON && BitwiseContains(state_, state)))
+	if (commandList == nullptr || state_ == state || (state != D3D12_RESOURCE_STATE_COMMON && BitwiseContains(state_, state)))
 	{
 		return false;
 	}

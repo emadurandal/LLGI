@@ -57,7 +57,7 @@ BufferVulkan::~BufferVulkan() {}
 
 bool BufferVulkan::Initialize(GraphicsVulkan* graphics, BufferUsageType usage, int32_t size)
 {
-	if (!VerifyUsage(usage))
+	if (size <= 0 || !VerifyUsage(usage))
 	{
 		return false;
 	}
@@ -195,8 +195,15 @@ void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, BufferVulka
 	vk::BufferMemoryBarrier bufferBarrier(
 		accessFlag_, accessFlag, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, buffer_->buffer(), 0, VK_WHOLE_SIZE);
 
-	commandBuffer.pipelineBarrier(
-		GetPipelineStageFlags(accessFlag_), GetPipelineStageFlags(accessFlag), vk::DependencyFlags(), 0, nullptr, 0, &bufferBarrier, 0, nullptr);
+	commandBuffer.pipelineBarrier(GetPipelineStageFlags(accessFlag_),
+								  GetPipelineStageFlags(accessFlag),
+								  vk::DependencyFlags(),
+								  0,
+								  nullptr,
+								  0,
+								  &bufferBarrier,
+								  0,
+								  nullptr);
 
 	accessFlag_ = accessFlag;
 }

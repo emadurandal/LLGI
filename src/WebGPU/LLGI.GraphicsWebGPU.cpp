@@ -9,6 +9,7 @@
 #include "LLGI.TextureWebGPU.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -24,10 +25,13 @@ namespace LLGI
 
 namespace
 {
-uint32_t AlignTo(uint32_t value, uint32_t alignment)
+struct AsyncWaitState
 {
-	return (value + alignment - 1) / alignment * alignment;
-}
+	std::atomic<bool> Completed{false};
+	std::atomic<bool> Succeeded{false};
+};
+
+uint32_t AlignTo(uint32_t value, uint32_t alignment) { return (value + alignment - 1) / alignment * alignment; }
 
 uint32_t GetFormatBytesPerPixel(TextureFormatType format)
 {
@@ -45,16 +49,16 @@ uint32_t GetFormatBytesPerPixel(TextureFormatType format)
 #if defined(__EMSCRIPTEN__)
 void WaitForQueue(wgpu::Queue& queue)
 {
-	bool completed = false;
-	bool succeeded = false;
+	auto state = std::make_shared<AsyncWaitState>();
 	queue.OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
-							  [&completed, &succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView) {
-								  succeeded = status == wgpu::QueueWorkDoneStatus::Success;
-								  completed = true;
+							  [state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
+							  {
+								  state->Succeeded.store(status == wgpu::QueueWorkDoneStatus::Success, std::memory_order_relaxed);
+								  state->Completed.store(true, std::memory_order_release);
 							  });
 
 	const double waitStart = emscripten_get_now();
-	while (!completed)
+	while (!state->Completed.load(std::memory_order_acquire))
 	{
 		emscripten_sleep(1);
 		if (emscripten_get_now() - waitStart > 5000.0)
@@ -63,7 +67,7 @@ void WaitForQueue(wgpu::Queue& queue)
 		}
 	}
 
-	if (!succeeded)
+	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
 	{
 		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU queue completion.");
 	}
@@ -78,9 +82,8 @@ void WaitForQueue(wgpu::Instance& instance, wgpu::Queue& queue)
 
 	bool succeeded = false;
 	auto future = queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly,
-											[&succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView) {
-												succeeded = status == wgpu::QueueWorkDoneStatus::Success;
-											});
+											[&succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
+											{ succeeded = status == wgpu::QueueWorkDoneStatus::Success; });
 	instance.WaitAny(future, std::numeric_limits<uint64_t>::max());
 
 	if (!succeeded)
@@ -116,10 +119,7 @@ class SingleFrameMemoryPoolWebGPU : public SingleFrameMemoryPool
 	}
 
 public:
-	SingleFrameMemoryPoolWebGPU(wgpu::Device device, int32_t swapBufferCount)
-		: SingleFrameMemoryPool(swapBufferCount), device_(device)
-	{
-	}
+	SingleFrameMemoryPoolWebGPU(wgpu::Device device, int32_t swapBufferCount) : SingleFrameMemoryPool(swapBufferCount), device_(device) {}
 };
 
 GraphicsWebGPU::GraphicsWebGPU(wgpu::Device device) : device_(device) { queue_ = device.GetQueue(); }
@@ -340,8 +340,7 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 	auto commandBuffer = encoder.Finish();
 	queue_.Submit(1, &commandBuffer);
 
-	bool completed = false;
-	bool succeeded = false;
+	auto state = std::make_shared<AsyncWaitState>();
 	auto future = readbackBuffer.MapAsync(wgpu::MapMode::Read,
 										  0,
 										  bufferSize,
@@ -350,9 +349,10 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 #else
 										  instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
 #endif
-										  [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
-											  succeeded = status == wgpu::MapAsyncStatus::Success;
-											  completed = true;
+										  [state](wgpu::MapAsyncStatus status, wgpu::StringView)
+										  {
+											  state->Succeeded.store(status == wgpu::MapAsyncStatus::Success, std::memory_order_relaxed);
+											  state->Completed.store(true, std::memory_order_release);
 										  });
 
 	if (instance_ != nullptr)
@@ -363,7 +363,7 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 	{
 #if defined(__EMSCRIPTEN__)
 		const double waitStart = emscripten_get_now();
-		while (!completed)
+		while (!state->Completed.load(std::memory_order_acquire))
 		{
 			emscripten_sleep(1);
 			if (emscripten_get_now() - waitStart > 5000.0)
@@ -373,7 +373,7 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 		}
 #else
 		const auto waitStart = std::chrono::steady_clock::now();
-		while (!completed)
+		while (!state->Completed.load(std::memory_order_acquire))
 		{
 			device_.Tick();
 			if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
@@ -386,7 +386,7 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 	}
 
 	std::vector<uint8_t> ret(static_cast<size_t>(unalignedBytesPerRow) * static_cast<size_t>(size.Y));
-	if (!succeeded)
+	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
 	{
 		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU readback.");
 		return ret;
@@ -458,47 +458,47 @@ void GraphicsWebGPU::CaptureRenderTargetAsync(Texture* renderTarget, std::functi
 	auto commandBuffer = encoder.Finish();
 	queue_.Submit(1, &commandBuffer);
 
-	state->Buffer.MapAsync(
-		wgpu::MapMode::Read,
-		0,
-		bufferSize,
-		wgpu::CallbackMode::AllowSpontaneous,
-		[state](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-			std::vector<uint8_t> result;
-			if (status == wgpu::MapAsyncStatus::Success)
-			{
-				result.resize(static_cast<size_t>(state->UnalignedBytesPerRow) * static_cast<size_t>(state->Height));
-				auto mapped = static_cast<const uint8_t*>(state->Buffer.GetConstMappedRange(0, state->BufferSize));
-				if (mapped == nullptr)
-				{
+	state->Buffer.MapAsync(wgpu::MapMode::Read,
+						   0,
+						   bufferSize,
+						   wgpu::CallbackMode::AllowSpontaneous,
+						   [state](wgpu::MapAsyncStatus status, wgpu::StringView message)
+						   {
+							   std::vector<uint8_t> result;
+							   if (status == wgpu::MapAsyncStatus::Success)
+							   {
+								   result.resize(static_cast<size_t>(state->UnalignedBytesPerRow) * static_cast<size_t>(state->Height));
+								   auto mapped = static_cast<const uint8_t*>(state->Buffer.GetConstMappedRange(0, state->BufferSize));
+								   if (mapped == nullptr)
+								   {
 #if defined(__EMSCRIPTEN__)
-					emscripten_log(EM_LOG_ERROR, "LLGI WebGPU async readback returned no mapped range.");
+									   emscripten_log(EM_LOG_ERROR, "LLGI WebGPU async readback returned no mapped range.");
 #endif
-					result.clear();
-				}
-				for (int32_t y = 0; mapped != nullptr && y < state->Height; y++)
-				{
-					memcpy(result.data() + static_cast<size_t>(y) * state->UnalignedBytesPerRow,
-						   mapped + static_cast<size_t>(y) * state->BytesPerRow,
-						   state->UnalignedBytesPerRow);
-				}
-				if (mapped != nullptr)
-				{
-					state->Buffer.Unmap();
-				}
-			}
-			else
-			{
+									   result.clear();
+								   }
+								   for (int32_t y = 0; mapped != nullptr && y < state->Height; y++)
+								   {
+									   memcpy(result.data() + static_cast<size_t>(y) * state->UnalignedBytesPerRow,
+											  mapped + static_cast<size_t>(y) * state->BytesPerRow,
+											  state->UnalignedBytesPerRow);
+								   }
+								   if (mapped != nullptr)
+								   {
+									   state->Buffer.Unmap();
+								   }
+							   }
+							   else
+							   {
 #if defined(__EMSCRIPTEN__)
-				emscripten_log(EM_LOG_ERROR,
-						   "LLGI WebGPU async readback MapAsync failed: status=%d message=%.*s",
-						   static_cast<int>(status),
-						   static_cast<int>(message.length),
-						   message.data != nullptr ? message.data : "");
+								   emscripten_log(EM_LOG_ERROR,
+												  "LLGI WebGPU async readback MapAsync failed: status=%d message=%.*s",
+												  static_cast<int>(status),
+												  static_cast<int>(message.length),
+												  message.data != nullptr ? message.data : "");
 #endif
-			}
-			state->Callback(std::move(result));
-		});
+							   }
+							   state->Callback(std::move(result));
+						   });
 }
 
 RenderPassPipelineState* GraphicsWebGPU::CreateRenderPassPipelineState(RenderPass* renderPass)

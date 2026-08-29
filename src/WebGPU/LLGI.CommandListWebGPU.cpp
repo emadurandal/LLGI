@@ -6,7 +6,15 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <memory>
 #include <string>
+#include <thread>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 
 namespace LLGI
 {
@@ -77,8 +85,10 @@ void CommandListWebGPU::ResetComputeBindGroupCaches()
 	}
 }
 
-void CommandListWebGPU::SetRenderBindGroup(
-	uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc)
+void CommandListWebGPU::SetRenderBindGroup(uint32_t index,
+										   const void* pipeline,
+										   const std::vector<BindGroupEntryKey>& entries,
+										   const wgpu::BindGroupDescriptor& desc)
 {
 	auto& cache = renderBindGroupCaches_[index];
 	if (cache.bindGroup == nullptr || cache.pipeline != pipeline || !Equals(cache.entries, entries))
@@ -91,8 +101,10 @@ void CommandListWebGPU::SetRenderBindGroup(
 	renderPassEncorder_.SetBindGroup(index, cache.bindGroup);
 }
 
-void CommandListWebGPU::SetComputeBindGroup(
-	uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc)
+void CommandListWebGPU::SetComputeBindGroup(uint32_t index,
+											const void* pipeline,
+											const std::vector<BindGroupEntryKey>& entries,
+											const wgpu::BindGroupDescriptor& desc)
 {
 	auto& cache = computeBindGroupCaches_[index];
 	if (cache.bindGroup == nullptr || cache.pipeline != pipeline || !Equals(cache.entries, entries))
@@ -146,12 +158,7 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 	fallbackExtent.width = 1;
 	fallbackExtent.height = 1;
 	fallbackExtent.depthOrArrayLayers = 1;
-	device_.GetQueue().WriteTexture(
-		&fallbackDst,
-		fallbackTextureData.data(),
-		fallbackTextureData.size(),
-		&fallbackLayout,
-		&fallbackExtent);
+	device_.GetQueue().WriteTexture(&fallbackDst, fallbackTextureData.data(), fallbackTextureData.size(), &fallbackLayout, &fallbackExtent);
 
 	for (int w = 0; w < 3; w++)
 	{
@@ -226,7 +233,8 @@ void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 
 	renderPassEncorder_ = commandEncorder_.BeginRenderPass(&desc);
 	ResetRenderBindGroupCaches();
-	renderPassEncorder_.SetViewport(0.0f, 0.0f, static_cast<float>(rp->GetScreenSize().X), static_cast<float>(rp->GetScreenSize().Y), 0.0f, 1.0f);
+	renderPassEncorder_.SetViewport(
+		0.0f, 0.0f, static_cast<float>(rp->GetScreenSize().X), static_cast<float>(rp->GetScreenSize().Y), 0.0f, 1.0f);
 
 	CommandList::BeginRenderPass(renderPass);
 }
@@ -401,7 +409,8 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		{
 			continue;
 		}
-		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
+		if (!pip->HasBinding(
+				1, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
 		{
 			continue;
 		}
@@ -562,7 +571,8 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		{
 			continue;
 		}
-		if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
+		if (!pip->HasBinding(
+				2, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
 		{
 			continue;
 		}
@@ -574,12 +584,8 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		entry.offset = buffer->GetOffset();
 		entry.size = buffer->GetSize();
 		samplerAndBufferGroupEntries.push_back(entry);
-		samplerAndBufferGroupEntryKeys.push_back({static_cast<uint32_t>(unit_ind),
-												  buffer,
-												  static_cast<uint64_t>(entry.offset),
-												  static_cast<uint64_t>(entry.size),
-												  0,
-												  0});
+		samplerAndBufferGroupEntryKeys.push_back(
+			{static_cast<uint32_t>(unit_ind), buffer, static_cast<uint64_t>(entry.offset), static_cast<uint64_t>(entry.size), 0, 0});
 	}
 
 	if (!textureGroupEntries.empty())
@@ -669,7 +675,8 @@ void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 		return;
 	}
 
-	commandEncorder_.CopyBufferToBuffer(srcBuffer->GetBuffer(), 0, dstBuffer->GetBuffer(), 0, std::min(srcBuffer->GetSize(), dstBuffer->GetSize()));
+	commandEncorder_.CopyBufferToBuffer(
+		srcBuffer->GetBuffer(), 0, dstBuffer->GetBuffer(), 0, std::min(srcBuffer->GetSize(), dstBuffer->GetSize()));
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
@@ -677,12 +684,58 @@ void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 
 void CommandListWebGPU::WaitUntilCompleted()
 {
-#if !defined(__EMSCRIPTEN__)
-	if (device_ != nullptr)
+	if (device_ == nullptr)
+	{
+		return;
+	}
+
+	struct WaitState
+	{
+		std::atomic<bool> Completed{false};
+		std::atomic<bool> Succeeded{false};
+	};
+
+	auto state = std::make_shared<WaitState>();
+	auto queue = device_.GetQueue();
+	queue.OnSubmittedWorkDone(
+#if defined(__EMSCRIPTEN__)
+		wgpu::CallbackMode::AllowSpontaneous,
+#else
+		wgpu::CallbackMode::AllowProcessEvents,
+#endif
+		[state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
+		{
+			state->Succeeded.store(status == wgpu::QueueWorkDoneStatus::Success, std::memory_order_relaxed);
+			state->Completed.store(true, std::memory_order_release);
+		});
+
+#if defined(__EMSCRIPTEN__)
+	const double waitStart = emscripten_get_now();
+	while (!state->Completed.load(std::memory_order_acquire))
+	{
+		emscripten_sleep(1);
+		if (emscripten_get_now() - waitStart > 5000.0)
+		{
+			break;
+		}
+	}
+#else
+	const auto waitStart = std::chrono::steady_clock::now();
+	while (!state->Completed.load(std::memory_order_acquire))
 	{
 		device_.Tick();
+		if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
+		{
+			break;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 #endif
+
+	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
+	{
+		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU command completion.");
+	}
 }
 
 } // namespace LLGI

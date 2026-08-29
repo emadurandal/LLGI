@@ -1,8 +1,8 @@
 #include "LLGI.ShaderMetal.h"
 #include "LLGI.GraphicsMetal.h"
 #include "LLGI.Metal_Impl.h"
-#import <dispatch/dispatch.h>
 #import <MetalKit/MetalKit.h>
+#import <dispatch/dispatch.h>
 
 #include <cstring>
 
@@ -74,6 +74,7 @@ bool ShaderMetal::Initialize(GraphicsMetal* graphics, DataStructure* data, int32
 			)
 			{
 				Log(LogType::Error, libraryError.localizedDescription.UTF8String);
+				[lib release];
 				return false;
 			}
 			if (lib == nil)
@@ -103,6 +104,7 @@ bool ShaderMetal::Initialize(GraphicsMetal* graphics, DataStructure* data, int32
 			)
 			{
 				Log(LogType::Error, libraryError.localizedDescription.UTF8String);
+				[lib release];
 				return false;
 			}
 			if (lib == nil)
@@ -118,4 +120,4 @@ bool ShaderMetal::Initialize(GraphicsMetal* graphics, DataStructure* data, int32
 	}
 }
 
-}
+} // namespace LLGI

@@ -26,7 +26,7 @@
 
 @end
 
-@interface LLGIApplicationDelegate : NSObject
+@interface LLGIApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
 
 @implementation LLGIApplicationDelegate
@@ -73,8 +73,9 @@ struct Cocoa_Impl
 
 		NSMenu* menubar = [NSMenu new];
 		[NSApp setMainMenu:menubar];
+		[menubar release];
 
-		id delegate = [[LLGIApplicationDelegate alloc] init];
+		static LLGIApplicationDelegate* delegate = [[LLGIApplicationDelegate alloc] init];
 
 		[NSApp setDelegate:delegate];
 
@@ -175,7 +176,14 @@ void* WindowMac::GetNativePtr(int32_t index)
 	return GetNSWindowAsVoidPtr();
 }
 
-Vec2I WindowMac::GetWindowSize() const { return windowSize_; }
+Vec2I WindowMac::GetWindowSize() const
+{
+	@autoreleasepool
+	{
+		NSRect contentRect = [impl_->window_.contentView frame];
+		return Vec2I(contentRect.size.width, contentRect.size.height);
+	}
+}
 
 Vec2I WindowMac::GetFrameBufferSize() const
 {
